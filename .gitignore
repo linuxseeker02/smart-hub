@@ -42,3 +42,21 @@ cookies.txt
 
 # Coverage
 coverage/
+
+# Editor
+*.swp
+*.swo
+
+# Mac
+.AppleDouble
+.LSOverride
+
+# Python virtual environments
+.venv/
+venv/
+
+# Docker
+docker-compose.override.yml
+
+# Misc
+*.bak
