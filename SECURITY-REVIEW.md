@@ -114,3 +114,33 @@ The inventory script performs only read queries and writes no database changes, 
 - No production, Atlas, development, or existing assets were accessed or modified.
 - Mocked resource-file tests passed; no real-provider tests exist.
 - Frontend `NoteCard` was inspected but has no dedicated thumbnail regression test.
+
+## Final Atlas Migration Pre-Execution Review
+
+### Verdict
+
+**DO NOT PROCEED until the two concurrency/integrity findings below are corrected.**
+
+| # | Severity | File | Lines | Vulnerability | Confidence |
+|---|----------|------|-------|---------------|------------|
+| 5 | 🟠 HIGH | `backend/src/scripts/migrateResourceDelivery.ts` | 283-387 | The Note record is read once and its moderation status, public ID, file type, and delivery metadata are not rechecked immediately before the provider rename. A concurrent change can make the apply path migrate a resource whose eligibility changed after the initial read. | 9/10 |
+| 6 | 🟠 HIGH | `backend/src/scripts/migrateResourceDelivery.ts` | 409-425, 426-455 | If the database update succeeds but post-update verification fails, the provider is rolled back but the MongoDB metadata is not restored. The provider rollback may be verified while MongoDB remains marked authenticated, leaving provider and database state inconsistent. | 9/10 |
+
+### Verified controls
+
+- Atlas mode requires the exact `test` database, confirmed Atlas hostname, exact nine-ID allowlist, and explicit apply confirmations.
+- Atlas queries are restricted to the allowlisted Note IDs; the result set is checked against the allowlist.
+- Rejected, removed, missing-ID, non-PDF, missing-provider, and provider-mismatch resources are skipped.
+- Provider state is checked before and after the transition.
+- MongoDB metadata is updated only after post-transition provider verification.
+- Provider transition and rollback use `overwrite: false` and `invalidate: true`; no delete operation is used.
+- Existing authenticated/raw resources are verified and skipped idempotently.
+- Provider URLs are not printed; credentials and signed URLs are not logged.
+- Local mode retains the localhost URI guard.
+
+### Validation
+
+- `cd backend && npm run build` — passed.
+- `cd backend && npm test -- --run tests/resource-delivery-migration.test.ts tests/resource-file-access.test.ts` — 47 tests passed.
+- `git diff --check` — passed.
+- Atlas dry-run with the exact allowlist — passed; no writes occurred.
