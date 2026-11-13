@@ -50,3 +50,30 @@ Moderation state, history, and audit events are written in one MongoDB transacti
 3. Test every resource route for pending, rejected, removed, approved, and legacy records.
 4. Verify Cloudinary assets are private or invalidated after removal.
 5. Exercise admin authorization with revoked sessions, inactive admins, and role changes.
+
+## Cloudinary Remediation Follow-up
+
+### Verdict
+
+**SAFE ONLY AFTER SPECIFIED CORRECTIONS**
+
+| # | Severity | File | Lines | Vulnerability | Confidence |
+|---|----------|------|-------|---------------|------------|
+| 1 | 🟠 HIGH | `backend/src/utils/resourceVisibility.ts`; `backend/src/utils/resourceFileAccess.ts`; `docs/ADMIN_RESOURCE_MODERATION.md` | `resourceVisibility.ts:5-6`; `resourceFileAccess.ts:17-21`; legacy asset section in documentation | Legacy records/assets remain publicly accessible through old Cloudinary URLs; authenticated `private_download_url()` does not convert or reliably access those public assets | 10/10 |
+| 2 | 🟡 MEDIUM | `backend/src/controllers/noteController.ts`; `frontend/src/components/NoteCard.tsx` | `noteController.ts:704-722`; `NoteCard.tsx:177` | The thumbnail endpoint redirects to a signed raw PDF URL rather than an image thumbnail, so the frontend `<img>` cannot render it | 10/10 |
+
+### Evidence and corrections
+
+Legacy assets were uploaded with the former public raw delivery configuration. The new helper requests authenticated raw delivery and cannot change the delivery type of an existing asset. Old public URLs therefore remain usable after database rejection or removal. The smallest safe correction is a separately verified Cloudinary migration/invalidation of legacy assets, or denying legacy file access until each asset has been migrated.
+
+The prior thumbnail route constructed an image delivery URL, while the remediation redirects to `private_download_url()` for the raw PDF. The smallest correction is to provide a provider-supported, authenticated image thumbnail path for PDF assets, or deliberately replace the UI with a non-image preview. This requires provider-backed validation.
+
+### Test classification and gaps
+
+- `backend/tests/resource-file-access.test.ts`: mocked unit tests; 11 passed.
+- `backend/tests/note-upload.test.ts`: mocked controller unit tests; 12 passed.
+- `backend/tests/admin-resource.integration.test.ts`: disposable MongoDB integration test, not executed because `127.0.0.1:27018` was unavailable.
+- Real Cloudinary tests: none.
+- Manual provider tests: none.
+
+Not demonstrated: old public URL behavior after moderation/removal, private-download access to newly authenticated raw assets, actual five-minute expiry enforcement, thumbnail bytes/content type, complete live serialization coverage, and frontend end-to-end preview behavior.
