@@ -77,3 +77,40 @@ The prior thumbnail route constructed an image delivery URL, while the remediati
 - Manual provider tests: none.
 
 Not demonstrated: old public URL behavior after moderation/removal, private-download access to newly authenticated raw assets, actual five-minute expiry enforcement, thumbnail bytes/content type, complete live serialization coverage, and frontend end-to-end preview behavior.
+
+## Final Cloudinary Security Audit
+
+### Verdict
+
+**NOT SAFE**
+
+| # | Severity | File | Lines | Vulnerability | Confidence |
+|---|----------|------|-------|---------------|------------|
+| 1 | 🔴 CRITICAL | `backend/src/utils/resourceVisibility.ts`; `docs/ADMIN_RESOURCE_MODERATION.md` | `resourceVisibility.ts:5-7`; docs 51, 78-79 | Legacy public Cloudinary URLs remain usable after moderation rejection/removal; application restrictions cannot revoke direct provider access | 10/10 |
+| 2 | 🟠 HIGH | `backend/src/controllers/noteController.ts` | 751-764 | Thumbnail proxy lacks timeout, response-size limit, and provider content-type/signature validation | 9/10 |
+| 3 | 🟡 MEDIUM | `backend/src/scripts/reportResourceDeliveryModes.ts`; `backend/src/config/db.ts` | report script 6-28; db 6-18 | Read-only inventory script can connect to any database selected by `MONGO_URI`/`MONGODB_URI`, including an unintended production target | 9/10 |
+| 4 | 🟡 MEDIUM | `backend/src/scripts/reportResourceDeliveryModes.ts` | 12-24 | Inventory does not detect inconsistent delivery metadata, such as authenticated PDFs marked as `raw` | 8/10 |
+
+### Audit evidence
+
+Cloudinary SDK versions are `cloudinary@1.41.3` and `multer-storage-cloudinary@4.0.0`. The installed `private_download_url()` implementation generates a signed API download URL with authenticated type, resource type, attachment, expiry, and API signature. The thumbnail helper generates an authenticated signed image URL with `c_fill`, `f_jpg`, `h_300`, `pg_1`, and `w_400`.
+
+The thumbnail proxy checks HTTP status but does not enforce a timeout, response-size limit, actual provider content type, or JPEG signature before returning `image/jpeg`. Tests are mocked and do not establish real Cloudinary compatibility, authentication, transformation output, or page rendering.
+
+The inventory script performs only read queries and writes no database changes, but it uses the unrestricted environment-selected MongoDB URI from `config/db.ts`. It was not executed.
+
+### Required corrections
+
+1. Migrate legacy assets to authenticated delivery and invalidate former public URLs; until then, keep legacy file access unavailable.
+2. Add bounded timeout, response-size enforcement, content-type validation, and image-signature validation to thumbnail proxying.
+3. Add an explicit safe-target safeguard to the inventory script.
+4. Validate delivery-mode/resource-type combinations in the inventory report.
+5. Add real staging-provider verification for authenticated downloads, PDF transformations, thumbnails, expiry, and invalidation.
+
+### Verification status
+
+- No Cloudinary API calls were made.
+- No database connections were made.
+- No production, Atlas, development, or existing assets were accessed or modified.
+- Mocked resource-file tests passed; no real-provider tests exist.
+- Frontend `NoteCard` was inspected but has no dedicated thumbnail regression test.
