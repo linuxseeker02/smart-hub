@@ -1,13 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Note } from "@/types";
 import { useAuth } from "@/context/AuthContext";
 import TutorChat from "@/components/TutorChat";
 import Flashcards from "@/components/Flashcards";
-import PDFViewer from "@/components/pdf/PDFViewer";
+import LoginRequired from "@/components/LoginRequired";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   FileText,
   Download,
@@ -22,6 +25,10 @@ import {
   AlertCircle,
 } from "lucide-react";
 
+const PDFViewer = dynamic(() => import("@/components/pdf/PDFViewer"), {
+  ssr: false,
+});
+
 export default function NotePage() {
   const params = useParams();
   const router = useRouter();
@@ -29,8 +36,10 @@ export default function NotePage() {
   const noteId = params.id as string;
 
   const [note, setNote] = useState<Note | null>(null);
+  const [fileAccessUrl, setFileAccessUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [accessRequired, setAccessRequired] = useState(false);
 
   // Rating state
   const [userRating, setUserRating] = useState(0);
@@ -48,17 +57,48 @@ export default function NotePage() {
 
   useEffect(() => {
     fetchNote();
-  }, [noteId]);
+  }, [noteId, user?._id]);
 
   const fetchNote = async () => {
     try {
       setLoading(true);
-      const response = await api.get<Note>(`/api/notes/${noteId}`);
-      setNote(response.data);
+      const response = await api.get<Note>(`/api/notes/${noteId}`, {
+        skipAuthRefresh: true,
+      });
+      let loadedNote = response.data;
+
+      if (user) {
+        const [contentResponse, fileResponse] = await Promise.all([
+          api.get<Pick<Note, "summary" | "keywords" | "quizQuestions" | "originalName">>(
+            `/api/notes/${noteId}/content`
+          ),
+          api.get<{ url: string }>(`/api/notes/${noteId}/file-url`),
+        ]);
+        loadedNote = {
+          ...loadedNote,
+          ...contentResponse.data,
+          reviews: loadedNote.reviews || [],
+          ratings: loadedNote.ratings || [],
+        };
+        setFileAccessUrl(fileResponse.data.url);
+        setAccessRequired(false);
+      } else {
+        setFileAccessUrl(null);
+        setAccessRequired(true);
+        loadedNote = {
+          ...loadedNote,
+          reviews: [],
+          ratings: [],
+          keywords: [],
+          quizQuestions: [],
+        };
+      }
+
+      setNote(loadedNote);
       
       // Check if user has already rated
-      if (user && response.data.ratings) {
-        const existingRating = response.data.ratings.find(
+      if (user && loadedNote.ratings) {
+        const existingRating = loadedNote.ratings.find(
           (r) => r.userId === user._id
         );
         if (existingRating) {
@@ -68,9 +108,26 @@ export default function NotePage() {
     } catch (err: unknown) {
       console.error("Error fetching note:", err);
       if (err && typeof err === "object" && "response" in err) {
-        const axiosError = err as { response?: { status?: number } };
+        const axiosError = err as {
+          response?: {
+            status?: number;
+            data?: { code?: string; message?: string };
+          };
+        };
         if (axiosError.response?.status === 404) {
           setError("Note not found");
+        } else if (
+          axiosError.response?.status === 409 &&
+          axiosError.response.data?.code === "RESOURCE_MIGRATION_REQUIRED"
+        ) {
+          setError(
+            "This note needs a secure file migration before it can be opened."
+          );
+        } else if (
+          axiosError.response?.status === 409 &&
+          axiosError.response.data?.code === "RESOURCE_FILE_ID_MISSING"
+        ) {
+          setError("This note has incomplete file metadata.");
         } else {
           setError("Failed to load note");
         }
@@ -84,6 +141,10 @@ export default function NotePage() {
 
   const handleDownload = async () => {
     if (!note) return;
+    if (!user) {
+      setAccessRequired(true);
+      return;
+    }
 
     try {
       window.open(`${process.env.NEXT_PUBLIC_API_URL}/api/notes/${noteId}/download`, "_blank");
@@ -94,7 +155,7 @@ export default function NotePage() {
 
   const handleRating = async (stars: number) => {
     if (!user) {
-      router.push("/login");
+      setAccessRequired(true);
       return;
     }
 
@@ -133,7 +194,7 @@ export default function NotePage() {
   const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
-      router.push("/login");
+      setAccessRequired(true);
       return;
     }
 
@@ -240,7 +301,9 @@ export default function NotePage() {
               {error || "Note not found"}
             </h2>
             <p className="text-gray-600 mb-6">
-              The note you're looking for doesn't exist or has been removed.
+              {error?.includes("migration")
+                ? "Please contact an administrator to complete the secure resource migration."
+                : "The note you&apos;re looking for doesn&apos;t exist or has been removed."}
             </p>
             <button
               onClick={() => router.push("/browse")}
@@ -353,14 +416,21 @@ export default function NotePage() {
             </div>
           </div>
         </div>
+        {!user && accessRequired && (
+          <LoginRequired returnTo={`/note/${noteId}`} compact />
+        )}
 
         {/* PDF Viewer Section */}
-        {note.fileType === "pdf" && (
-          <PDFViewer fileUrl={note.fileUrl} fileName={note.originalName} noteId={note._id} />
+        {user && note.fileType === "pdf" && fileAccessUrl && (
+          <PDFViewer fileUrl={fileAccessUrl} fileName={note.originalName || note.title} noteId={note._id} />
+        )}
+
+        {!user && (
+          <LoginRequired returnTo={`/note/${noteId}`} />
         )}
 
         {/* Non-PDF File Preview */}
-        {note.fileType !== "pdf" && (
+        {user && note.fileType !== "pdf" && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
             <div className="flex flex-col items-center justify-center py-12 space-y-4">
               <FileText className="h-16 w-16 text-gray-400" />
@@ -368,27 +438,29 @@ export default function NotePage() {
                 <p className="text-gray-700 font-medium mb-2">Preview not available for this file type</p>
                 <p className="text-sm text-gray-600">{note.fileType.toUpperCase()} files cannot be previewed in browser</p>
               </div>
-              <a
-                href={`${process.env.NEXT_PUBLIC_API_URL}/api/notes/${note._id}/download`}
-                download={note.originalName}
+              <button
+                type="button"
+                onClick={handleDownload}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center space-x-2"
               >
                 <Download className="h-4 w-4" />
                 <span>Download File</span>
-              </a>
+              </button>
             </div>
           </div>
         )}
 
         {/* Summary Section */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+        {user && <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
           <div className="flex items-center space-x-2 mb-4">
             <Bot className="h-6 w-6 text-blue-600" />
             <h2 className="text-2xl font-bold text-gray-900">AI Summary</h2>
           </div>
-          <p className="text-gray-700 leading-relaxed mb-6">
-            {note.summary || "No summary available yet."}
-          </p>
+          <div className="mb-6 text-gray-700 leading-relaxed [&_a]:text-blue-700 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-blue-300 [&_blockquote]:pl-4 [&_code]:rounded [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:py-0.5 [&_h1]:mb-2 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_li]:ml-5 [&_li]:list-disc [&_ol]:space-y-1 [&_p]:mb-3 [&_pre]:my-4 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-gray-900 [&_pre]:p-4 [&_pre]:text-gray-100 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:mb-4 [&_table]:w-full [&_td]:border [&_td]:border-gray-200 [&_td]:p-2 [&_th]:border [&_th]:border-gray-200 [&_th]:bg-gray-50 [&_th]:p-2">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {note.summary || "No summary available yet."}
+            </ReactMarkdown>
+          </div>
 
           {note.keywords && note.keywords.length > 0 && (
             <div>
@@ -405,12 +477,14 @@ export default function NotePage() {
               </div>
             </div>
           )}
-        </div>
+        </div>}
 
-        <TutorChat note={{ _id: note._id, title: note.title }} />
+        {user ? (
+          <TutorChat note={{ _id: note._id, title: note.title }} />
+        ) : null}
 
         {/* Quiz Section */}
-        {note.quizQuestions && note.quizQuestions.length > 0 && (
+        {user && note.quizQuestions && note.quizQuestions.length > 0 && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-2">
@@ -497,14 +571,14 @@ export default function NotePage() {
           </div>
         )}
 
-        <Flashcards noteId={note._id} />
+        {user && <Flashcards noteId={note._id} />}
 
         {/* Reviews Section */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
           <div className="flex items-center space-x-2 mb-6">
             <MessageSquare className="h-6 w-6 text-purple-600" />
             <h2 className="text-2xl font-bold text-gray-900">
-              Reviews ({note.reviews.length})
+              Reviews ({note.reviews?.length || 0})
             </h2>
           </div>
 
@@ -557,7 +631,7 @@ export default function NotePage() {
 
           {/* Reviews List */}
           <div className="space-y-4">
-            {note.reviews.length > 0 ? (
+            {note.reviews && note.reviews.length > 0 ? (
               note.reviews
                 .sort(
                   (a, b) =>

@@ -31,6 +31,7 @@ function SearchContent() {
     try {
       const response = await api.get<SearchResponse>("/api/notes/search", {
         params: { q: searchQuery },
+        skipAuthRefresh: true,
       });
       setSearchResults(response.data);
     } catch (err: unknown) {

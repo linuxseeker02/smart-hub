@@ -171,7 +171,7 @@ export default function PortalPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-sm text-gray-500">Today's Study Time</p>
+            <p className="text-sm text-gray-500">Today&apos;s Study Time</p>
             <p className="text-2xl font-bold text-gray-900">{studyStats.todayMinutes} mins</p>
           </div>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -193,7 +193,7 @@ export default function PortalPage() {
         </div>
 
         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Today's Schedule ({todayClasses.day || "N/A"})</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Today&apos;s Schedule ({todayClasses.day || "N/A"})</h2>
           {sortedClasses.length === 0 ? (
             <p className="text-gray-600">No classes today 🎉</p>
           ) : (

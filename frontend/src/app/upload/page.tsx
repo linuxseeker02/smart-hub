@@ -95,11 +95,7 @@ export default function UploadPage() {
       formData.append("subject", subject.trim());
       formData.append("topic", topic.trim());
 
-      const response = await api.post<Note>("/api/notes/upload", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
+      const response = await api.post<Note>("/api/notes/upload", formData);
 
       setUploadedNote(response.data);
       setSuccess(true);

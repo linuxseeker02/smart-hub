@@ -1,11 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Archive, Download, Loader2, Trash2, Upload } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { PYQ } from "@/types";
+import LoginRequired from "@/components/LoginRequired";
 
 type Filters = {
   semester: string;
@@ -64,7 +64,6 @@ const getExamTypeClass = (examType: PYQ["examType"]) => {
 };
 
 export default function PYQPage() {
-  const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 
   const [pyqs, setPyqs] = useState<PYQ[]>([]);
@@ -79,15 +78,8 @@ export default function PYQPage() {
   const total = useMemo(() => pyqs.length, [pyqs]);
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login");
-      return;
-    }
-
-    if (user) {
-      void fetchPYQs();
-    }
-  }, [authLoading, user, router, filters.semester, filters.courseCode, filters.year, filters.examType]);
+    if (!authLoading) void fetchPYQs();
+  }, [authLoading, filters.semester, filters.courseCode, filters.year, filters.examType]);
 
   const fetchPYQs = async () => {
     try {
@@ -116,6 +108,10 @@ export default function PYQPage() {
 
   const handleUpload = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!user) {
+      setMessage({ type: "error", text: "Please sign in to upload a PYQ" });
+      return;
+    }
 
     if (
       !uploadForm.courseCode.trim() ||
@@ -147,9 +143,7 @@ export default function PYQPage() {
       formData.append("description", uploadForm.description.trim());
       formData.append("file", uploadForm.file);
 
-      await api.post("/api/pyq/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      await api.post("/api/pyq/upload", formData);
 
       setShowUploadModal(false);
       setUploadForm(DEFAULT_UPLOAD_FORM);
@@ -164,6 +158,11 @@ export default function PYQPage() {
   };
 
   const handleDownload = async (pyq: PYQ) => {
+    if (!user) {
+      setMessage({ type: "error", text: "Please sign in to download study materials" });
+      return;
+    }
+
     try {
       setDownloadingId(pyq._id);
       setMessage(null);
@@ -216,7 +215,7 @@ export default function PYQPage() {
     }
   };
 
-  if (authLoading || !user) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
@@ -236,13 +235,20 @@ export default function PYQPage() {
             </div>
           </div>
           <button
-            onClick={() => setShowUploadModal(true)}
+            onClick={() => {
+              if (user) setShowUploadModal(true);
+              else setMessage({ type: "error", text: "Please sign in to upload a PYQ" });
+            }}
             className="px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2"
           >
             <Upload className="h-4 w-4" />
             <span>Upload Paper</span>
           </button>
         </div>
+
+        {!user && (
+          <LoginRequired returnTo="/pyq" compact />
+        )}
 
         {message && (
           <div
@@ -340,7 +346,7 @@ export default function PYQPage() {
                     const uploadedByName =
                       typeof pyq.uploadedBy === "string" ? "Unknown" : pyq.uploadedBy.name;
                     const ownerId = typeof pyq.uploadedBy === "string" ? pyq.uploadedBy : pyq.uploadedBy._id;
-                    const canDelete = ownerId === user._id;
+                    const canDelete = Boolean(user && ownerId === user._id);
 
                     return (
                       <tr key={pyq._id} className="border-b border-gray-100 last:border-b-0">
@@ -398,7 +404,7 @@ export default function PYQPage() {
             <div className="lg:hidden space-y-3">
               {pyqs.map((pyq) => {
                 const ownerId = typeof pyq.uploadedBy === "string" ? pyq.uploadedBy : pyq.uploadedBy._id;
-                const canDelete = ownerId === user._id;
+                const canDelete = Boolean(user && ownerId === user._id);
                 return (
                   <div key={pyq._id} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
                     <div>

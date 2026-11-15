@@ -25,6 +25,7 @@ import {
   ClipboardCheck,
   BookOpenCheck,
   Timer,
+  ShieldCheck,
 } from "lucide-react";
 
 type DesktopDropdown = "academics" | "tools" | null;
@@ -36,10 +37,13 @@ export default function Navbar() {
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<DesktopDropdown>(null);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
   const desktopMenusRef = useRef<HTMLDivElement | null>(null);
 
   const academicsLinks = [
-    { href: "/timetable", label: "Timetable", icon: CalendarDays },
+    { href: "/academics", label: "Academic profile", icon: GraduationCap },
+    { href: "/academics/routine", label: "Routine", icon: CalendarDays },
     { href: "/exams", label: "Exams", icon: ClipboardCheck },
     { href: "/syllabus", label: "Syllabus", icon: BookOpenCheck },
     { href: "/grades", label: "Grades", icon: GraduationCap },
@@ -70,11 +74,19 @@ export default function Navbar() {
   };
 
   const handleLogout = async () => {
+    setLogoutError(null);
+    setLoggingOut(true);
+
     try {
       await api.post("/api/auth/logout");
     } catch {
-      // Cookie may already be expired, continue logout anyway
+      setLogoutError(
+        "Logout could not be completed. Your session is still active; please try again."
+      );
+      setLoggingOut(false);
+      return;
     }
+
     setUser(null);
     closeMenus();
     router.push("/");
@@ -86,6 +98,24 @@ export default function Navbar() {
 
   return (
     <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200">
+      {logoutError && (
+        <div
+          role="alert"
+          className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700"
+        >
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+            <span>{logoutError}</span>
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="shrink-0 font-medium underline hover:no-underline disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loggingOut ? "Retrying..." : "Retry logout"}
+            </button>
+          </div>
+        </div>
+      )}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <Link href="/" className="flex items-center space-x-2" onClick={closeMenus}>
@@ -113,7 +143,7 @@ export default function Navbar() {
             {user && (
               <>
                 <Link
-                  href="/portal"
+                  href="/dashboard"
                   className="flex items-center space-x-1 text-gray-700 hover:text-blue-600 transition-colors"
                   onClick={closeMenus}
                 >
@@ -172,6 +202,16 @@ export default function Navbar() {
                     </div>
                   )}
                 </div>
+                {user.role === "admin" && (
+                  <Link
+                    href="/admin"
+                    className="flex items-center space-x-1 text-gray-700 hover:text-blue-600 transition-colors"
+                    onClick={closeMenus}
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>Admin</span>
+                  </Link>
+                )}
               </>
             )}
           </div>
@@ -211,10 +251,11 @@ export default function Navbar() {
                 </Link>
                 <button
                   onClick={handleLogout}
+                  disabled={loggingOut}
                   className="flex items-center space-x-1 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
                 >
                   <LogOut className="h-4 w-4" />
-                  <span>Logout</span>
+                  <span>{loggingOut ? "Logging out..." : "Logout"}</span>
                 </button>
               </>
             ) : (
@@ -259,11 +300,20 @@ export default function Navbar() {
 
             {user ? (
               <>
-                <Link href="/portal" className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg" onClick={closeMenus}>
-                  Portal
+                <Link href="/dashboard" className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg" onClick={closeMenus}>
+                  Dashboard
                 </Link>
-                <Link href="/timetable" className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg" onClick={closeMenus}>
-                  Timetable
+                <Link href="/academics" className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg" onClick={closeMenus}>
+                  Academics
+                </Link>
+                <Link href="/academics/routine" className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg" onClick={closeMenus}>
+                  Routine
+                </Link>
+                <Link href="/notes" className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg" onClick={closeMenus}>
+                  Notes
+                </Link>
+                <Link href="/ai" className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg" onClick={closeMenus}>
+                  AI Tutor
                 </Link>
                 <Link href="/exams" className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg" onClick={closeMenus}>
                   Exams
@@ -289,11 +339,17 @@ export default function Navbar() {
                 <Link href="/profile" className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg" onClick={closeMenus}>
                   Profile
                 </Link>
+                {user.role === "admin" && (
+                  <Link href="/admin" className="block px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg" onClick={closeMenus}>
+                    Admin
+                  </Link>
+                )}
                 <button
                   onClick={handleLogout}
+                  disabled={loggingOut}
                   className="w-full text-left px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg"
                 >
-                  Logout
+                  {loggingOut ? "Logging out..." : "Logout"}
                 </button>
               </>
             ) : (

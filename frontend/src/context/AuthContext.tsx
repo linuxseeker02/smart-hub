@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import api from "@/lib/api";
+import api, { AUTH_STATE_INVALIDATED_EVENT } from "@/lib/api";
 import { AuthResponse } from "@/types";
 
 interface AuthContextType {
@@ -17,6 +17,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const handleAuthInvalidated = () => setUser(null);
+    window.addEventListener(AUTH_STATE_INVALIDATED_EVENT, handleAuthInvalidated);
+
     const checkAuth = async () => {
       try {
         const { data } = await api.get<AuthResponse>("/api/auth/me");
@@ -29,6 +32,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     checkAuth();
+
+    return () =>
+      window.removeEventListener(
+        AUTH_STATE_INVALIDATED_EVENT,
+        handleAuthInvalidated
+      );
   }, []);
 
   return (

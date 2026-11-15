@@ -12,7 +12,8 @@ type ProfileForm = {
   rollNumber: string;
   department: string;
   program: string;
-  semester: number;
+  semester: number | "";
+  academicSession: string;
   section: string;
   batch: string;
   university: string;
@@ -27,7 +28,8 @@ const defaultForm: ProfileForm = {
   rollNumber: "",
   department: "",
   program: "",
-  semester: 1,
+  semester: "",
+  academicSession: "",
   section: "",
   batch: "",
   university: "",
@@ -68,7 +70,8 @@ export default function ProfilePage() {
         rollNumber: data.rollNumber ?? "",
         department: data.department ?? "",
         program: data.program ?? "",
-        semester: Number(data.semester ?? 1),
+        semester: data.semester ?? "",
+        academicSession: data.academicSession ?? "",
         section: data.section ?? "",
         batch: data.batch ?? "",
         university: data.university ?? "",
@@ -235,12 +238,23 @@ export default function ProfilePage() {
               </label>
 
               <label className="space-y-1">
+                <span className="text-sm font-medium text-gray-700">Academic Session</span>
+                <input
+                  value={form.academicSession}
+                  onChange={(e) => handleChange("academicSession", e.target.value)}
+                  placeholder="e.g. 2026–27"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </label>
+
+              <label className="space-y-1">
                 <span className="text-sm font-medium text-gray-700">Semester</span>
                 <select
                   value={form.semester}
-                  onChange={(e) => handleChange("semester", Number(e.target.value))}
+                  onChange={(e) => handleChange("semester", e.target.value ? Number(e.target.value) : "")}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
+                  <option value="">Not set</option>
                   {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
                     <option key={sem} value={sem}>
                       {sem}

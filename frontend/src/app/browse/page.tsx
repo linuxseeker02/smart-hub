@@ -24,11 +24,13 @@ async function getNotes(params: SearchParamsType): Promise<NotesResponse> {
   queryParams.append("limit", "12");
 
   const query = queryParams.toString();
+  const url = `${process.env.NEXT_PUBLIC_API_URL}/api/notes?${query}`;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/notes?${query}`, {
-      cache: "no-store",
-    });
+    const ctrl = new AbortController();
+    timeoutId = setTimeout(() => ctrl.abort(), 8000);
+    const response = await fetch(url, { signal: ctrl.signal, next: { revalidate: 60 } });
 
     if (!response.ok) {
       throw new Error("Failed to fetch notes");
@@ -38,6 +40,8 @@ async function getNotes(params: SearchParamsType): Promise<NotesResponse> {
   } catch (error) {
     console.error("Error fetching notes:", error);
     return { notes: [], total: 0, page: 1, totalPages: 0 };
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 

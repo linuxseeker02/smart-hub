@@ -32,15 +32,15 @@ export interface Review {
 export interface Note {
   _id: string;
   uploadedBy: { _id: string; name: string; email: string } | null;
-  fileUrl: string;
-  filePublicId: string;
+  fileUrl?: string;
+  filePublicId?: string;
   fileType: "pdf" | "docx" | "ppt";
-  originalName: string;
+  originalName?: string;
   title: string;
   summary: string;
   keywords: string[];
   quizQuestions: QuizQuestion[];
-  semester: number;
+  semester?: number;
   subject: string;
   topic: string;
   ratings: Rating[];
@@ -177,6 +177,7 @@ export interface Timetable {
   _id: string;
   user: string;
   semester: number;
+  academicSession?: string;
   section: string;
   slots: TimetableSlot[];
   isActive: boolean;
@@ -192,7 +193,8 @@ export interface StudentProfile {
   rollNumber: string;
   department: string;
   program: string;
-  semester: number;
+  semester: number | null;
+  academicSession: string;
   section: string;
   batch: string;
   university: string;
@@ -277,8 +279,8 @@ export interface PYQ {
     | "Class Test 1 Set 2"
     | "Class Test 2 Set 1"
     | "Class Test 2 Set 2";
-  fileUrl: string;
-  filePublicId: string;
+  fileUrl?: string;
+  filePublicId?: string;
   originalName: string;
   fileSize: number;
   downloadCount: number;

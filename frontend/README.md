@@ -20,6 +20,10 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Smart Hub configuration
+
+Set `NEXT_PUBLIC_COLLEGE_IMAGE_URL` in `.env.local` to display a college photograph on the Smart Hub home page. The image is rendered responsively with `object-fit: cover`; leaving it unset uses the built-in neutral academic visual.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

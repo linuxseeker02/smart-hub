@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { CalendarDays, Loader2, Plus, Wand2, X } from "lucide-react";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { Timetable, TimetableSlot } from "@/types";
+import { StudentProfile, Timetable, TimetableSlot } from "@/types";
 
 type SlotInput = Omit<TimetableSlot, "_id">;
-type UploadMode = "manual" | "paste";
+type UploadMode = "manual" | "file";
 
 const DAYS: TimetableSlot["day"][] = ["MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
@@ -24,42 +24,6 @@ const EMPTY_SLOT: SlotInput = {
   room: "",
   type: "lecture",
 };
-
-const DEFAULT_SLOTS: SlotInput[] = [
-  { day: "MON", period: 3, startTime: "10:00", endTime: "11:00", courseCode: "6BWUVAC01", courseName: "Basic AI Tools", faculty: "MR. AYAN DAS", room: "402", type: "lab" },
-  { day: "MON", period: 4, startTime: "11:00", endTime: "12:00", courseCode: "BNC49106", courseName: "Windows Server Admin Lab", faculty: "DR. ANINDYA BOSE", room: "108", type: "lab" },
-  { day: "MON", period: 5, startTime: "12:00", endTime: "13:00", courseCode: "APTI-401", courseName: "Aptitude", faculty: "MS. KEYA HAZRA", room: "402", type: "lecture" },
-  { day: "MON", period: 6, startTime: "13:00", endTime: "14:00", courseCode: "BNC40105", courseName: "Windows Server Admin", faculty: "DR. ANINDYA BOSE", room: "402", type: "lecture" },
-  { day: "MON", period: 8, startTime: "15:00", endTime: "16:00", courseCode: "AEC09001", courseName: "Communicative English Lab", faculty: "MR. SOHAM ROY", room: "207", type: "lab" },
-  { day: "MON", period: 9, startTime: "16:00", endTime: "17:00", courseCode: "AEC09001", courseName: "Communicative English Lab", faculty: "MR. SOHAM ROY", room: "207", type: "lab" },
-
-  { day: "TUE", period: 3, startTime: "10:00", endTime: "11:00", courseCode: "6BWUVAC01", courseName: "Basic AI Tools", faculty: "MR. AYAN DAS", room: "402", type: "lab" },
-  { day: "TUE", period: 4, startTime: "11:00", endTime: "12:00", courseCode: "BNC40105", courseName: "Windows Server Admin", faculty: "DR. ANINDYA BOSE", room: "108", type: "lecture" },
-  { day: "TUE", period: 5, startTime: "12:00", endTime: "13:00", courseCode: "APTI-401", courseName: "Aptitude", faculty: "MS. KEYA HAZRA", room: "402", type: "lecture" },
-  { day: "TUE", period: 7, startTime: "14:00", endTime: "15:00", courseCode: "BNC40109", courseName: "Threat Modelling", faculty: "MR. HRITWIK ROY", room: "401", type: "lecture" },
-  { day: "TUE", period: 8, startTime: "15:00", endTime: "16:00", courseCode: "BNC40109", courseName: "Threat Modelling", faculty: "MR. HRITWIK ROY", room: "401", type: "lecture" },
-  { day: "TUE", period: 9, startTime: "16:00", endTime: "17:00", courseCode: "BNC40204", courseName: "Blockchain", faculty: "MR. HEMANT KUMAR SAHU", room: "401", type: "lecture" },
-  { day: "TUE", period: 10, startTime: "17:00", endTime: "18:00", courseCode: "BNC40204", courseName: "Blockchain", faculty: "MR. HEMANT KUMAR SAHU", room: "401", type: "lecture" },
-
-  { day: "WED", period: 4, startTime: "11:00", endTime: "12:00", courseCode: "BNC40109", courseName: "Threat Modelling", faculty: "MR. HRITWIK ROY", room: "003", type: "lecture" },
-  { day: "WED", period: 5, startTime: "12:00", endTime: "13:00", courseCode: "BNC40109", courseName: "Threat Modelling", faculty: "MR. HRITWIK ROY", room: "003", type: "lecture" },
-  { day: "WED", period: 6, startTime: "13:00", endTime: "14:00", courseCode: "AEC09001", courseName: "Communicative English Lab", faculty: "MR. SOHAM ROY", room: "207", type: "lab" },
-  { day: "WED", period: 8, startTime: "15:00", endTime: "16:00", courseCode: "BNC40204", courseName: "Blockchain", faculty: "MR. HEMANT KUMAR SAHU", room: "003", type: "lecture" },
-  { day: "WED", period: 9, startTime: "16:00", endTime: "17:00", courseCode: "BNC40204", courseName: "Blockchain", faculty: "MR. HEMANT KUMAR SAHU", room: "003", type: "lecture" },
-
-  { day: "THU", period: 4, startTime: "11:00", endTime: "12:00", courseCode: "BNC40105", courseName: "Windows Server Admin", faculty: "DR. ANINDYA BOSE", room: "402", type: "lecture" },
-  { day: "THU", period: 5, startTime: "12:00", endTime: "13:00", courseCode: "BNC49106", courseName: "Windows Server Admin Lab", faculty: "DR. ANINDYA BOSE", room: "108", type: "lab" },
-  { day: "THU", period: 6, startTime: "13:00", endTime: "14:00", courseCode: "BNC49106", courseName: "Windows Server Admin Lab", faculty: "DR. ANINDYA BOSE", room: "108", type: "lab" },
-  { day: "THU", period: 7, startTime: "14:00", endTime: "15:00", courseCode: "BNC49106", courseName: "Windows Server Admin Lab", faculty: "DR. ANINDYA BOSE", room: "108", type: "lab" },
-  { day: "THU", period: 9, startTime: "16:00", endTime: "17:00", courseCode: "BNC40107", courseName: "Web App Penetration Testing", faculty: "MR. SASMIT DE", room: "402", type: "lecture" },
-  { day: "THU", period: 10, startTime: "17:00", endTime: "18:00", courseCode: "BNC49108", courseName: "Web App Penetration Testing Lab", faculty: "MR. SASMIT DE", room: "108", type: "lab" },
-
-  { day: "FRI", period: 5, startTime: "12:00", endTime: "13:00", courseCode: "BNC49108", courseName: "Web App Penetration Testing Lab", faculty: "MR. SASMIT DE", room: "108", type: "lab" },
-  { day: "FRI", period: 6, startTime: "13:00", endTime: "14:00", courseCode: "BNC49108", courseName: "Web App Penetration Testing Lab", faculty: "MR. SASMIT DE", room: "108", type: "lab" },
-  { day: "FRI", period: 7, startTime: "14:00", endTime: "15:00", courseCode: "BNC49108", courseName: "Web App Penetration Testing Lab", faculty: "MR. SASMIT DE", room: "108", type: "lab" },
-  { day: "FRI", period: 9, startTime: "16:00", endTime: "17:00", courseCode: "BNC40107", courseName: "Web App Penetration Testing", faculty: "MR. SASMIT DE", room: "402", type: "lecture" },
-  { day: "FRI", period: 10, startTime: "17:00", endTime: "18:00", courseCode: "BNC40107", courseName: "Web App Penetration Testing", faculty: "MR. SASMIT DE", room: "402", type: "lecture" },
-];
 
 const toMinutes = (time: string) => {
   const [h, m] = time.split(":").map(Number);
@@ -78,20 +42,23 @@ export default function TimetablePage() {
   const { user, loading: authLoading } = useAuth();
 
   const [timetable, setTimetable] = useState<Timetable | null>(null);
+  const [history, setHistory] = useState<Timetable[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadMode, setUploadMode] = useState<UploadMode>("manual");
-  const [semester, setSemester] = useState(4);
-  const [section, setSection] = useState("E");
+  const [semester, setSemester] = useState<number | "">("");
+  const [section, setSection] = useState("");
+  const [academicSession, setAcademicSession] = useState("");
   const [slots, setSlots] = useState<SlotInput[]>([]);
   const [slotForm, setSlotForm] = useState<SlotInput>(EMPTY_SLOT);
 
-  const [rawText, setRawText] = useState("");
   const [parsing, setParsing] = useState(false);
   const [parsedSlots, setParsedSlots] = useState<SlotInput[]>([]);
+  const [file, setFile] = useState<File | null>(null);
+  const [fileStatus, setFileStatus] = useState("");
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -107,11 +74,20 @@ export default function TimetablePage() {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get<{ timetable: Timetable | null }>("/api/timetable");
-      setTimetable(response.data.timetable);
-      if (response.data.timetable) {
-        setSemester(response.data.timetable.semester);
-        setSection(response.data.timetable.section || "E");
+      const [timetableResponse, historyResponse, profileResponse] = await Promise.all([
+        api.get<{ timetable: Timetable | null }>("/api/timetable"),
+        api.get<{ timetables: Timetable[] }>("/api/timetable/history"),
+        api.get<StudentProfile>("/api/profile"),
+      ]);
+      setTimetable(timetableResponse.data.timetable);
+      setHistory(historyResponse.data.timetables || []);
+      setAcademicSession(profileResponse.data.academicSession || "");
+      if (timetableResponse.data.timetable) {
+        setSemester(timetableResponse.data.timetable.semester ?? "");
+        setSection(timetableResponse.data.timetable.section || "");
+        setAcademicSession(
+          timetableResponse.data.timetable.academicSession || profileResponse.data.academicSession || ""
+        );
       }
     } catch (err) {
       console.error("Failed to fetch timetable:", err);
@@ -169,13 +145,13 @@ export default function TimetablePage() {
       setSaving(true);
       setError(null);
       await api.post("/api/timetable", {
-        semester,
+        ...(semester ? { semester } : {}),
+        academicSession,
         section,
         slots: payloadSlots,
       });
       setShowUploadModal(false);
       setParsedSlots([]);
-      setRawText("");
       setSlots([]);
       await fetchTimetable();
     } catch (err) {
@@ -186,28 +162,40 @@ export default function TimetablePage() {
     }
   };
 
-  const parseWithAI = async () => {
-    if (!rawText.trim()) return;
+  const uploadFile = async () => {
+    if (!file) {
+      setError("Choose a PDF or image timetable first");
+      return;
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    setFileStatus("Uploading and extracting timetable...");
+    setParsing(true);
+    setError(null);
     try {
-      setParsing(true);
-      const response = await api.post<{ slots: SlotInput[] }>("/api/timetable/parse", {
-        rawText: rawText.trim(),
-      });
-      setParsedSlots(response.data.slots || []);
-    } catch (err) {
-      console.error("Failed to parse timetable text:", err);
-      setError("Failed to parse timetable text");
+      const response = await api.post<{ slots: SlotInput[]; status: string; message?: string }>(
+        "/api/timetable/upload-file",
+        formData
+      );
+      if (!response.data.slots?.length) {
+        throw new Error(response.data.message || "No timetable entries were found");
+      }
+      setParsedSlots(response.data.slots);
+      setFileStatus("Preview ready. Review each entry before saving.");
+    } catch (err: unknown) {
+      console.error("Failed to upload timetable file:", err);
+      const message = err && typeof err === "object" && "response" in err
+        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        : undefined;
+      setError(message || "Upload failed. Try another timetable file.");
+      setFileStatus("");
     } finally {
       setParsing(false);
     }
   };
 
-  const loadDefaults = () => {
-    setSemester(4);
-    setSection("E");
-    setSlots(DEFAULT_SLOTS.map((slot) => ({ ...slot })));
-    setUploadMode("manual");
-    setShowUploadModal(true);
+  const updateParsedSlot = <K extends keyof SlotInput>(index: number, key: K, value: SlotInput[K]) => {
+    setParsedSlots((previous) => previous.map((slot, slotIndex) => slotIndex === index ? { ...slot, [key]: value } : slot));
   };
 
   if (authLoading || !user) {
@@ -233,17 +221,11 @@ export default function TimetablePage() {
             </h1>
             <p className="text-gray-600 mt-1">
               {timetable
-                ? `Semester ${timetable.semester} • Section ${timetable.section || "-"}`
+                ? `${timetable.semester ? `Semester ${timetable.semester} • ` : ""}Section ${timetable.section || "-"}`
                 : "No active timetable"}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={loadDefaults}
-              className="px-4 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-            >
-              Load Semester 4 Default
-            </button>
             <button
               onClick={() => setShowUploadModal(true)}
               className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2"
@@ -253,6 +235,21 @@ export default function TimetablePage() {
             </button>
           </div>
         </div>
+
+        {history.length > 0 && (
+          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="font-bold text-slate-950">Timetable history</h2>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {history.map((item) => (
+                <button key={item._id} type="button" onClick={() => setTimetable(item)} className="rounded-xl border border-slate-200 p-4 text-left hover:border-sky-300">
+                  <p className="font-semibold text-slate-950">{item.academicSession || "Academic session not set"}</p>
+                  <p className="mt-1 text-sm text-slate-600">{item.semester ? `Semester ${item.semester}` : "Semester not set"} · {item.section || "Section not set"}</p>
+                  <span className={`mt-3 inline-flex rounded-full px-2 py-1 text-xs font-semibold ${item.isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{item.isActive ? "Current" : "Archived"}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm overflow-x-auto">
           {loading ? (
@@ -331,12 +328,17 @@ export default function TimetablePage() {
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <label className="space-y-1">
+                  <span className="text-sm font-medium text-gray-700">Academic session</span>
+                  <input value={academicSession} onChange={(e) => setAcademicSession(e.target.value)} placeholder="e.g. 2026–27" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </label>
+                <label className="space-y-1">
                   <span className="text-sm font-medium text-gray-700">Semester</span>
                   <select
                     value={semester}
-                    onChange={(e) => setSemester(Number(e.target.value))}
+                    onChange={(e) => setSemester(e.target.value ? Number(e.target.value) : "")}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                   >
+                    <option value="">Not set</option>
                     {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
                       <option key={sem} value={sem}>
                         {sem}
@@ -368,13 +370,13 @@ export default function TimetablePage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setUploadMode("paste")}
+                      onClick={() => setUploadMode("file")}
                       className={`px-3 py-2 rounded-lg border flex items-center gap-2 ${
-                        uploadMode === "paste" ? "bg-blue-600 text-white border-blue-600" : "border-gray-300"
+                        uploadMode === "file" ? "bg-blue-600 text-white border-blue-600" : "border-gray-300"
                       }`}
                     >
                       <Wand2 className="h-4 w-4" />
-                      Paste Text
+                      Upload File
                     </button>
                   </div>
                 </div>
@@ -492,53 +494,41 @@ export default function TimetablePage() {
                 </div>
               )}
 
-              {uploadMode === "paste" && (
+              {uploadMode === "file" && (
                 <div className="space-y-4">
-                  <textarea
-                    value={rawText}
-                    onChange={(e) => setRawText(e.target.value)}
-                    className="w-full h-40 px-3 py-2 border border-gray-300 rounded-lg"
-                    placeholder="Paste timetable text extracted from PDF/image..."
-                  />
-                  <button
-                    onClick={() => void parseWithAI()}
-                    disabled={parsing}
-                    className="px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-60 inline-flex items-center gap-2"
-                  >
+                  <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-sky-300 bg-sky-50 p-6 text-center">
+                    <span className="font-semibold text-slate-900">{file ? file.name : "Drag and drop or browse your timetable"}</span>
+                    <span className="mt-1 text-sm text-slate-600">PDF, PNG, JPG, JPEG · maximum 10MB</span>
+                    <input type="file" accept=".pdf,.png,.jpg,.jpeg,image/png,image/jpeg,application/pdf" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                  </label>
+                  <button onClick={() => void uploadFile()} disabled={!file || parsing} className="px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-60 inline-flex items-center gap-2">
                     {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                    Parse with AI
+                    {fileStatus || "Upload and prepare preview"}
                   </button>
-
-                  {parsedSlots.length > 0 && (
-                    <div className="border border-gray-200 rounded-lg">
-                      <div className="p-3 border-b border-gray-200 font-semibold text-gray-900">
-                        Parsed Preview ({parsedSlots.length} slots)
-                      </div>
-                      <div className="max-h-72 overflow-y-auto divide-y">
-                        {parsedSlots.map((slot, index) => (
-                          <div key={`${slot.day}-${slot.period}-${index}`} className="p-3 text-sm">
-                            <p className="font-semibold text-gray-900">
-                              {slot.day} P{slot.period} • {slot.courseName}
-                            </p>
-                            <p className="text-gray-600">
-                              {slot.startTime}-{slot.endTime} • {slot.courseCode || "-"} • {slot.faculty || "-"} • Room {slot.room || "-"} • {slot.type}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="p-3 border-t border-gray-200">
-                        <button
-                          onClick={() => void saveTimetable(parsedSlots)}
-                          disabled={saving}
-                          className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
-                        >
-                          {saving ? "Saving..." : "Confirm & Save"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  {fileStatus && <p className="text-sm text-slate-600">{fileStatus}</p>}
                 </div>
               )}
+
+              {parsedSlots.length > 0 && uploadMode === "file" && (
+                <div className="border border-gray-200 rounded-lg">
+                  <div className="p-3 border-b border-gray-200 font-semibold text-gray-900">Timetable preview · {parsedSlots.length} entries</div>
+                  <div className="max-h-96 overflow-y-auto divide-y">
+                    {parsedSlots.map((slot, index) => (
+                      <div key={`${slot.day}-${slot.period}-${index}`} className="grid gap-2 p-3 md:grid-cols-8">
+                        <select value={slot.day} onChange={(e) => updateParsedSlot(index, "day", e.target.value as SlotInput["day"])} className="rounded border border-gray-300 px-2 py-1 text-sm">{DAYS.map((day) => <option key={day}>{day}</option>)}</select>
+                        <input value={slot.startTime} onChange={(e) => updateParsedSlot(index, "startTime", e.target.value)} className="rounded border border-gray-300 px-2 py-1 text-sm" aria-label="Start time" />
+                        <input value={slot.endTime} onChange={(e) => updateParsedSlot(index, "endTime", e.target.value)} className="rounded border border-gray-300 px-2 py-1 text-sm" aria-label="End time" />
+                        <input value={slot.courseCode} onChange={(e) => updateParsedSlot(index, "courseCode", e.target.value)} className="rounded border border-gray-300 px-2 py-1 text-sm" placeholder="Code" />
+                        <input value={slot.courseName} onChange={(e) => updateParsedSlot(index, "courseName", e.target.value)} className="rounded border border-gray-300 px-2 py-1 text-sm md:col-span-2" placeholder="Course" />
+                        <input value={slot.faculty} onChange={(e) => updateParsedSlot(index, "faculty", e.target.value)} className="rounded border border-gray-300 px-2 py-1 text-sm" placeholder="Faculty" />
+                        <div className="flex gap-2"><input value={slot.room} onChange={(e) => updateParsedSlot(index, "room", e.target.value)} className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm" placeholder="Room" /><button type="button" onClick={() => setParsedSlots((previous) => previous.filter((_, slotIndex) => slotIndex !== index))} className="rounded border border-red-200 px-2 text-red-600">×</button></div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-3 border-t border-gray-200"><button onClick={() => void saveTimetable(parsedSlots)} disabled={saving} className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">{saving ? "Saving..." : "Confirm & Save Timetable"}</button></div>
+                </div>
+              )}
+
             </div>
           </div>
         </div>

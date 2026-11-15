@@ -39,7 +39,6 @@ export default function SyllabusPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<SubjectForm>(defaultForm);
   const [generating, setGenerating] = useState(false);
-  const [seeding, setSeeding] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -108,20 +107,6 @@ export default function SyllabusPage() {
     }
   };
 
-  const seedSemester4 = async () => {
-    try {
-      setSeeding(true);
-      setError(null);
-      await api.post("/api/syllabus/seed");
-      await fetchSyllabus();
-    } catch (err) {
-      console.error("Failed to seed syllabus:", err);
-      setError("Failed to load Semester 4 syllabus");
-    } finally {
-      setSeeding(false);
-    }
-  };
-
   const deleteSubject = async (subjectId: string) => {
     if (!confirm("Delete this subject tracker?")) return;
     try {
@@ -157,13 +142,6 @@ export default function SyllabusPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => void seedSemester4()}
-              disabled={seeding}
-              className="px-4 py-2 rounded-lg border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 disabled:opacity-60"
-            >
-              {seeding ? "Loading..." : "Load Semester 4 Syllabus"}
-            </button>
-            <button
               onClick={() => setShowModal(true)}
               className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2"
             >
@@ -179,7 +157,7 @@ export default function SyllabusPage() {
           </div>
         ) : subjects.length === 0 ? (
           <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-600">
-            No subjects yet. Add one or load Semester 4 syllabus.
+            No subjects yet. Add a subject to begin tracking your academic journey.
           </div>
         ) : (
           <div className="space-y-4">
@@ -187,16 +165,21 @@ export default function SyllabusPage() {
               const completed = subject.topics.filter((topic) => topic.status === "completed").length;
               const total = subject.topics.length;
               const isExpanded = Boolean(expanded[subject._id]);
+              const handleToggle = () => {
+                setExpanded((prev) => ({ ...prev, [subject._id]: !prev[subject._id] }));
+              };
 
               return (
                 <div key={subject._id} className="bg-white border border-gray-200 rounded-xl shadow-sm">
-                  <button
-                    className="w-full p-5 text-left flex items-center justify-between gap-4"
-                    onClick={() =>
-                      setExpanded((prev) => ({ ...prev, [subject._id]: !prev[subject._id] }))
-                    }
-                  >
-                    <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className="w-full p-5 text-left flex items-center justify-between gap-4"
+                      onClick={handleToggle}
+                      onKeyDown={(e) => e.key === "Enter" && handleToggle()}
+                    >
+                      <div className="min-w-0">
                       <h3 className="font-bold text-gray-900 truncate">
                         {subject.courseName}{" "}
                         <span className="text-sm font-medium text-gray-500">({subject.courseCode || "-"})</span>
@@ -215,21 +198,20 @@ export default function SyllabusPage() {
                           style={{ width: `${Math.max(0, Math.min(subject.overallProgress, 100))}%` }}
                         />
                       </div>
+                      </div>
+                      {isExpanded ? <ChevronUp className="h-5 w-5 text-gray-500 shrink-0" /> : <ChevronDown className="h-5 w-5 text-gray-500 shrink-0" />}
                     </div>
-                    <div className="shrink-0 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void deleteSubject(subject._id);
-                        }}
-                        className="text-sm px-3 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50"
-                      >
-                        Delete
-                      </button>
-                      {isExpanded ? <ChevronUp className="h-5 w-5 text-gray-500" /> : <ChevronDown className="h-5 w-5 text-gray-500" />}
-                    </div>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void deleteSubject(subject._id);
+                      }}
+                      className="text-sm px-3 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
 
                   {isExpanded && (
                     <div className="px-5 pb-5 border-t border-gray-100">

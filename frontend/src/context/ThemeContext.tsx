@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import {
+  createContext,
+  ReactNode,
+  useContext,
+  useEffect,
+  useSyncExternalStore,
+} from "react";
 
 type Theme = "light" | "dark";
 
@@ -12,28 +18,63 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+let currentTheme: Theme = "light";
+let initialized = false;
+const listeners = new Set<() => void>();
+
+const getStoredTheme = (): Theme | null => {
+  if (typeof window === "undefined") return null;
+
+  const storedTheme = localStorage.getItem("theme");
+  return storedTheme === "light" || storedTheme === "dark" ? storedTheme : null;
+};
+
+const applyTheme = (nextTheme: Theme) => {
+  currentTheme = nextTheme;
+
+  if (typeof window !== "undefined") {
+    localStorage.setItem("theme", nextTheme);
+    document.documentElement.classList.toggle("dark", nextTheme === "dark");
+  }
+
+  listeners.forEach((listener) => listener());
+};
+
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
+
+const getClientSnapshot = () => currentTheme;
+const getServerSnapshot = (): Theme => "light";
+
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  const [theme, setTheme] = useState<Theme>("light");
+  const theme = useSyncExternalStore(
+    subscribe,
+    getClientSnapshot,
+    getServerSnapshot
+  );
 
   useEffect(() => {
-    const storedTheme = localStorage.getItem("theme") as Theme | null;
+    if (initialized) return;
+    initialized = true;
 
-    if (storedTheme === "light" || storedTheme === "dark") {
-      setTheme(storedTheme);
+    const storedTheme = getStoredTheme();
+    if (storedTheme) {
+      applyTheme(storedTheme);
       return;
     }
 
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    setTheme(prefersDark ? "dark" : "light");
+    applyTheme(prefersDark ? "dark" : "light");
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("theme", theme);
-    document.documentElement.classList.toggle("dark", theme === "dark");
-  }, [theme]);
+  const setTheme = (nextTheme: Theme) => {
+    applyTheme(nextTheme);
+  };
 
   const toggleTheme = () => {
-    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+    setTheme(theme === "dark" ? "light" : "dark");
   };
 
   return (

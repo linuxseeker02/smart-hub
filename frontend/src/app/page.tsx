@@ -1,249 +1,271 @@
 "use client";
 
 import Link from "next/link";
-import Navbar from "@/components/Navbar";
+import { useEffect, useState } from "react";
 import {
+  ArrowRight,
   BookOpen,
   Brain,
-  Search,
-  Star,
-  Upload,
-  Sparkles,
-  Users,
+  CalendarDays,
+  CheckCircle2,
   FileText,
-  TrendingUp,
+  GraduationCap,
+  Library,
+  MessageCircle,
+  NotebookTabs,
+  Route,
+  Sparkles,
+  Upload,
+  type LucideIcon,
 } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import api from "@/lib/api";
+import { Note, StudentProfile, TimetableSlot } from "@/types";
+
+type TodayResponse = { classes: TimetableSlot[]; day: string; total: number };
+
+const collegeImageUrl = process.env.NEXT_PUBLIC_COLLEGE_IMAGE_URL;
+
+const features = [
+  {
+    title: "AI Academic Tutor",
+    description: "Ask questions about your notes and subjects in a focused study conversation.",
+    icon: MessageCircle,
+    href: "/ai",
+    color: "bg-sky-100 text-sky-700",
+  },
+  {
+    title: "Smart Notes",
+    description: "Upload and organize academic resources in one searchable library.",
+    icon: NotebookTabs,
+    href: "/notes",
+    color: "bg-emerald-100 text-emerald-700",
+  },
+  {
+    title: "AI Summary",
+    description: "Turn long documents into structured study material and key concepts.",
+    icon: Sparkles,
+    href: "/notes",
+    color: "bg-violet-100 text-violet-700",
+  },
+  {
+    title: "Practice Quiz",
+    description: "Check your understanding with questions generated from your learning material.",
+    icon: CheckCircle2,
+    href: "/quiz",
+    color: "bg-amber-100 text-amber-700",
+  },
+  {
+    title: "Smart Routine",
+    description: "Upload your actual timetable and keep today's schedule close at hand.",
+    icon: CalendarDays,
+    href: "/academics/routine",
+    color: "bg-rose-100 text-rose-700",
+  },
+  {
+    title: "Academic Dashboard",
+    description: "See your semester, subjects, activity, and progress in one calm workspace.",
+    icon: GraduationCap,
+    href: "/dashboard",
+    color: "bg-indigo-100 text-indigo-700",
+  },
+];
+
+const greeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+};
 
 export default function Home() {
+  const { user, loading: authLoading } = useAuth();
+  const [profile, setProfile] = useState<StudentProfile | null>(null);
+  const [today, setToday] = useState<TodayResponse | null>(null);
+  const [recentNotes, setRecentNotes] = useState<Note[]>([]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const loadWorkspace = async () => {
+      try {
+        const [profileResponse, todayResponse, notesResponse] = await Promise.all([
+          api.get<StudentProfile>("/api/profile"),
+          api.get<TodayResponse>("/api/timetable/today"),
+          api.get<{ notes: Note[] }>("/api/notes", { params: { limit: 3 } }),
+        ]);
+        setProfile(profileResponse.data);
+        setToday(todayResponse.data);
+        setRecentNotes(notesResponse.data.notes || []);
+      } catch (error) {
+        console.error("Unable to load personalized home:", error);
+      }
+    };
+
+    void loadWorkspace();
+  }, [user]);
+
+  const displayName = profile?.fullName || user?.name || "";
+  const isReady = !authLoading && Boolean(user);
+
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
+    <div className="min-h-screen bg-[#f7f9fc] text-slate-900">
+      <main>
+        <section className="relative overflow-hidden border-b border-slate-200 bg-white">
+          <div className="absolute -right-32 -top-32 h-80 w-80 rounded-full bg-sky-100/70 blur-3xl" />
+          <div className="absolute -bottom-40 left-1/3 h-96 w-96 rounded-full bg-indigo-100/60 blur-3xl" />
+          <div className="relative mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:px-8 lg:py-24">
+            <div className="flex flex-col justify-center">
+              <div className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm font-semibold text-sky-700">
+                <Sparkles className="h-4 w-4" />
+                Personal learning, organized
+              </div>
+              <p className="mb-4 text-sm font-bold uppercase tracking-[0.22em] text-slate-500">
+                Smart Hub
+              </p>
+              <h1 className="max-w-3xl text-4xl font-bold tracking-tight text-slate-950 sm:text-6xl">
+                Your Personal{" "}
+                <span className="text-sky-700">AI Academic Workspace</span>
+              </h1>
+              <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
+                Organize your notes, understand your subjects, manage your routine, and learn with an AI tutor — all in one place.
+              </p>
 
-      {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white">
-        <div className="absolute inset-0 bg-black/10"></div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 sm:py-32">
-          <div className="text-center space-y-8">
-            <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
-              Share Knowledge, Ace Exams
-            </h1>
-            <p className="text-xl sm:text-2xl text-blue-100 max-w-3xl mx-auto">
-              Upload your notes, get AI-powered summaries and quiz questions
-              instantly
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Link
-                href="/browse"
-                className="px-8 py-4 text-lg font-semibold bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-all transform hover:scale-105 shadow-lg"
-              >
-                Browse Notes
+              {isReady ? (
+                <div className="mt-8 rounded-2xl border border-sky-100 bg-sky-50/80 p-5">
+                  <p className="text-sm font-semibold text-sky-700">{greeting()}, {displayName}</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-950">Continue your learning journey.</p>
+                  <div className="mt-4 flex flex-wrap gap-2 text-sm text-slate-600">
+                    {profile?.academicSession && <span className="rounded-full bg-white px-3 py-1">Session {profile.academicSession}</span>}
+                    {profile?.semester ? <span className="rounded-full bg-white px-3 py-1">Semester {profile.semester}</span> : null}
+                    {profile?.section && <span className="rounded-full bg-white px-3 py-1">Section {profile.section}</span>}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <Link href={user ? "/dashboard" : "/register"} className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 font-semibold text-white transition hover:bg-sky-800">
+                  {user ? "Open My Dashboard" : "Get Started"}
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link href="/browse" className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 transition hover:border-sky-400 hover:text-sky-700">
+                  <Library className="h-4 w-4" />
+                  {user ? "Explore Resources" : "Explore Smart Hub"}
+                </Link>
+              </div>
+            </div>
+
+            <div className="relative flex min-h-[360px] items-end overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-xl">
+              {collegeImageUrl ? (
+                <img src={collegeImageUrl} alt="College campus" className="absolute inset-0 h-full w-full object-cover" />
+              ) : (
+                <div className="absolute inset-0 bg-[linear-gradient(135deg,#dbeafe_0%,#f8fafc_48%,#e0e7ff_100%)]">
+                  <div className="absolute left-10 top-12 h-36 w-36 rounded-full border-[18px] border-white/70" />
+                  <div className="absolute bottom-0 right-0 h-64 w-64 rounded-tl-full bg-sky-200/60" />
+                </div>
+              )}
+              <div className="relative m-5 w-full rounded-2xl border border-white/60 bg-slate-950/75 p-5 text-white backdrop-blur-sm">
+                <p className="text-sm font-medium text-sky-200">Built for students</p>
+                <h2 className="mt-1 text-2xl font-bold">A calmer way to study.</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-200">
+                  Your academic context connects your routine, resources, and progress so every study session starts with less friction.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {user && (
+          <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+            <div className="mb-5 flex items-end justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">Current academic status</p>
+                <h2 className="mt-1 text-2xl font-bold text-slate-950">Your study day at a glance</h2>
+              </div>
+              <Link href="/dashboard" className="hidden text-sm font-semibold text-sky-700 sm:block">View full dashboard →</Link>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {([
+                ["Academic session", profile?.academicSession || "Not set", Route],
+                ["Semester", profile?.semester ? `Semester ${profile.semester}` : "Not set", GraduationCap],
+                ["Today's classes", String(today?.total ?? 0), CalendarDays],
+                ["Next class", today?.classes?.[0]?.courseName || "No class scheduled", BookOpen],
+              ] as Array<[string, string, LucideIcon]>).map(([label, value, Icon]) => (
+                <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <Icon className="h-5 w-5 text-sky-700" />
+                  <p className="mt-5 text-sm text-slate-500">{label}</p>
+                  <p className="mt-1 truncate text-lg font-bold text-slate-950">{value}</p>
+                </div>
+              ))}
+            </div>
+            {recentNotes.length > 0 && (
+              <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-slate-950">Recently added resources</h3>
+                  <Link href="/browse" className="text-sm font-semibold text-sky-700">Browse all</Link>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {recentNotes.map((note) => (
+                    <Link key={note._id} href={`/note/${note._id}`} className="rounded-xl border border-slate-200 p-4 transition hover:border-sky-300 hover:bg-sky-50">
+                      <FileText className="h-5 w-5 text-sky-700" />
+                      <p className="mt-3 truncate font-semibold text-slate-900">{note.title}</p>
+                      <p className="mt-1 text-sm text-slate-500">{note.subject}</p>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <div className="max-w-2xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">Everything connected</p>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Built around the way you actually learn</h2>
+            <p className="mt-3 text-slate-600">From the first upload to the next class, Smart Hub keeps the important context close.</p>
+          </div>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {features.map(({ title, description, icon: Icon, href, color }) => (
+              <Link key={title} href={href} className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-md">
+                <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${color}`}><Icon className="h-5 w-5" /></div>
+                <h3 className="mt-5 text-lg font-bold text-slate-950">{title}</h3>
+                <p className="mt-2 leading-6 text-slate-600">{description}</p>
+                <span className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-sky-700">Open feature <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></span>
               </Link>
-              <Link
-                href="/upload"
-                className="px-8 py-4 text-lg font-semibold bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all transform hover:scale-105 shadow-lg border-2 border-white/20"
-              >
-                Upload Notes
-              </Link>
-            </div>
+            ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Stats Section */}
-      <section className="py-16 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="text-center p-8 bg-white rounded-xl shadow-sm">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-                <FileText className="h-8 w-8 text-blue-600" />
-              </div>
-              <h3 className="text-4xl font-bold text-gray-900 mb-2">10,000+</h3>
-              <p className="text-gray-600 font-medium">Notes Shared</p>
+        <section className="border-y border-slate-200 bg-white">
+          <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+            <div className="text-center">
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-700">How Smart Hub works</p>
+              <h2 className="mt-2 text-3xl font-bold text-slate-950">A workspace that grows with you</h2>
             </div>
-            <div className="text-center p-8 bg-white rounded-xl shadow-sm">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
-                <BookOpen className="h-8 w-8 text-green-600" />
-              </div>
-              <h3 className="text-4xl font-bold text-gray-900 mb-2">500+</h3>
-              <p className="text-gray-600 font-medium">Subjects Covered</p>
-            </div>
-            <div className="text-center p-8 bg-white rounded-xl shadow-sm">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-100 rounded-full mb-4">
-                <Users className="h-8 w-8 text-purple-600" />
-              </div>
-              <h3 className="text-4xl font-bold text-gray-900 mb-2">50,000+</h3>
-              <p className="text-gray-600 font-medium">Students Learning</p>
+            <div className="mt-10 grid gap-8 md:grid-cols-4">
+              {([
+                ["01", "Set up your academic profile", GraduationCap],
+                ["02", "Upload notes and timetable", Upload],
+                ["03", "Learn with AI", Brain],
+                ["04", "Track your progress", Route],
+              ] as Array<[string, string, LucideIcon]>).map(([number, title, Icon]) => (
+                <div key={String(number)} className="relative text-center">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-50 text-sky-700"><Icon className="h-6 w-6" /></div>
+                  <p className="mt-4 text-xs font-bold tracking-widest text-slate-400">{number}</p>
+                  <h3 className="mt-2 font-bold text-slate-950">{title}</h3>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
-      {/* Features Section */}
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-              Powerful Features
-            </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Everything you need to succeed academically
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="p-8 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-100">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-600 rounded-lg mb-4">
-                <Brain className="h-6 w-6 text-white" />
-              </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-3">
-                AI-Powered Analysis
-              </h3>
-              <p className="text-gray-600 leading-relaxed">
-                Upload your PDF, DOCX, or PPT files and get instant AI-generated
-                summaries, keywords, and custom quiz questions to test your
-                knowledge.
-              </p>
-            </div>
-            <div className="p-8 bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl border border-green-100">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-green-600 rounded-lg mb-4">
-                <Search className="h-6 w-6 text-white" />
-              </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-3">
-                Smart Search
-              </h3>
-              <p className="text-gray-600 leading-relaxed">
-                Find exactly what you need with our intelligent search engine.
-                Filter by topic, subject, semester, and get relevance-ranked
-                results instantly.
-              </p>
-            </div>
-            <div className="p-8 bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl border border-purple-100">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-purple-600 rounded-lg mb-4">
-                <Star className="h-6 w-6 text-white" />
-              </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-3">
-                Community Reviews
-              </h3>
-              <p className="text-gray-600 leading-relaxed">
-                Rate and review notes to help others find quality content. Build
-                trust through community feedback and discover top-rated materials.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works Section */}
-      <section className="py-20 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-              How It Works
-            </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Get started in three simple steps
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="relative text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 text-white rounded-full text-2xl font-bold mb-4">
-                1
-              </div>
-              <Upload className="h-12 w-12 text-blue-600 mx-auto mb-4" />
-              <h3 className="text-xl font-bold text-gray-900 mb-2">
-                Upload Your Notes
-              </h3>
-              <p className="text-gray-600">
-                Simply drag and drop your PDF, DOCX, or PowerPoint files
-              </p>
-            </div>
-            <div className="relative text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-green-600 text-white rounded-full text-2xl font-bold mb-4">
-                2
-              </div>
-              <Sparkles className="h-12 w-12 text-green-600 mx-auto mb-4" />
-              <h3 className="text-xl font-bold text-gray-900 mb-2">
-                AI Processes
-              </h3>
-              <p className="text-gray-600">
-                Our AI extracts key insights, generates summaries and quiz
-                questions
-              </p>
-            </div>
-            <div className="relative text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-600 text-white rounded-full text-2xl font-bold mb-4">
-                3
-              </div>
-              <TrendingUp className="h-12 w-12 text-purple-600 mx-auto mb-4" />
-              <h3 className="text-xl font-bold text-gray-900 mb-2">
-                Learn & Share
-              </h3>
-              <p className="text-gray-600">
-                Access enhanced notes, practice with quizzes, and help others
-                learn
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="bg-gray-900 text-gray-300 py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
-            <div className="col-span-1 md:col-span-2">
-              <div className="flex items-center space-x-2 mb-4">
-                <BookOpen className="h-8 w-8 text-blue-400" />
-                <span className="text-xl font-bold text-white">Smart Hub</span>
-              </div>
-              <p className="text-gray-400 max-w-md">
-                Empowering students with AI-powered academic resources. Share
-                knowledge, collaborate, and excel together.
-              </p>
-            </div>
-            <div>
-              <h4 className="text-white font-semibold mb-4">Quick Links</h4>
-              <ul className="space-y-2">
-                <li>
-                  <Link href="/browse" className="hover:text-blue-400 transition-colors">
-                    Browse Notes
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/search" className="hover:text-blue-400 transition-colors">
-                    Search
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/upload" className="hover:text-blue-400 transition-colors">
-                    Upload
-                  </Link>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="text-white font-semibold mb-4">Support</h4>
-              <ul className="space-y-2">
-                <li>
-                  <Link href="/about" className="hover:text-blue-400 transition-colors">
-                    About Us
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/contact" className="hover:text-blue-400 transition-colors">
-                    Contact
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/faq" className="hover:text-blue-400 transition-colors">
-                    FAQ
-                  </Link>
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div className="border-t border-gray-800 pt-8 text-center text-gray-500">
-            <p>&copy; 2026 Smart Academic Resource Hub. All rights reserved.</p>
-          </div>
+      <footer className="bg-slate-950 px-4 py-10 text-slate-300">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 font-bold text-white"><BookOpen className="h-5 w-5 text-sky-400" /> Smart Hub</div>
+          <p className="text-sm">Your Personal AI Academic Workspace</p>
         </div>
       </footer>
     </div>

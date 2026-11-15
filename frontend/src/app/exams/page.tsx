@@ -60,7 +60,6 @@ export default function ExamsPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<ExamForm>(defaultForm);
   const [error, setError] = useState<string | null>(null);
-  const [seeding, setSeeding] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -148,20 +147,6 @@ export default function ExamsPage() {
     }
   };
 
-  const loadSemester4 = async () => {
-    try {
-      setSeeding(true);
-      setError(null);
-      await api.post("/api/exams/seed");
-      await fetchExams();
-    } catch (err) {
-      console.error("Failed to seed exams:", err);
-      setError("Failed to load Semester 4 exams");
-    } finally {
-      setSeeding(false);
-    }
-  };
-
   if (authLoading || !user) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -189,13 +174,6 @@ export default function ExamsPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => void loadSemester4()}
-              disabled={seeding}
-              className="px-4 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60"
-            >
-              {seeding ? "Loading..." : "Load Semester 4 Exams"}
-            </button>
-            <button
               onClick={() => setShowModal(true)}
               className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2"
             >
@@ -211,7 +189,7 @@ export default function ExamsPage() {
           </div>
         ) : exams.length === 0 ? (
           <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-600">
-            No exams yet. Add one or load Semester 4 exams.
+            No exams yet. Add an exam when your academic schedule is ready.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

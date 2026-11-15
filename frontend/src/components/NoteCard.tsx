@@ -33,7 +33,7 @@ export default function NoteCard({ note }: NoteCardProps) {
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setBookmarked(Boolean(user?.savedNotes.includes(note._id)));
+    setBookmarked(Boolean(user?.savedNotes?.includes(note._id)));
   }, [user, note._id]);
 
   useEffect(() => {
