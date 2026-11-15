@@ -17,7 +17,8 @@ export interface ITimetableSlot {
 
 export interface ITimetable extends Document {
   user: mongoose.Types.ObjectId;
-  semester: number;
+  semester?: number;
+  academicSession: string;
   section: string;
   slots: ITimetableSlot[];
   isActive: boolean;
@@ -56,7 +57,8 @@ const timetableSchema = new Schema<ITimetable>(
       ref: "User",
       required: true,
     },
-    semester: { type: Number, required: true },
+    semester: { type: Number, min: 1, max: 8 },
+    academicSession: { type: String, default: "", trim: true },
     section: { type: String, default: "" },
     slots: {
       type: [timetableSlotSchema],

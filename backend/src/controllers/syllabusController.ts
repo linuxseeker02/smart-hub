@@ -27,7 +27,7 @@ const generateTopicsWithAI = async (payload: {
   description?: string;
 }): Promise<Array<{ title: string; description: string; order: number }>> => {
   const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
+    model: "openai/gpt-oss-120b",
     max_tokens: 2000,
     messages: [
       {

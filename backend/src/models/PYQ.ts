@@ -6,6 +6,16 @@ export type PYQExamType =
   | "Class Test 1 Set 2"
   | "Class Test 2 Set 1"
   | "Class Test 2 Set 2";
+export type ModerationStatus = "pending" | "approved" | "rejected" | "removed";
+export type ResourceDeliveryMode = "authenticated" | "legacy-public";
+export type ResourceDeliveryType = "image" | "raw";
+
+export interface IPYQModerationHistoryEntry {
+  status: ModerationStatus;
+  moderatedBy: mongoose.Types.ObjectId;
+  moderatedAt: Date;
+  reason?: string;
+}
 
 export interface IPYQ extends Document {
   uploadedBy: mongoose.Types.ObjectId;
@@ -16,10 +26,17 @@ export interface IPYQ extends Document {
   examType: PYQExamType;
   fileUrl: string;
   filePublicId: string;
+  deliveryMode?: ResourceDeliveryMode;
+  deliveryResourceType?: ResourceDeliveryType;
   originalName: string;
   fileSize: number;
   downloadCount: number;
   description: string;
+  moderationStatus?: ModerationStatus;
+  moderatedBy?: mongoose.Types.ObjectId;
+  moderatedAt?: Date;
+  moderationReason?: string;
+  moderationHistory: IPYQModerationHistoryEntry[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -71,6 +88,14 @@ const pyqSchema = new Schema<IPYQ>(
       type: String,
       required: true,
     },
+    deliveryMode: {
+      type: String,
+      enum: ["authenticated", "legacy-public"],
+    },
+    deliveryResourceType: {
+      type: String,
+      enum: ["image", "raw"],
+    },
     originalName: {
       type: String,
       required: true,
@@ -87,11 +112,46 @@ const pyqSchema = new Schema<IPYQ>(
       type: String,
       default: "",
     },
+    moderationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected", "removed"],
+      default: "pending",
+      index: true,
+    },
+    moderatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    moderatedAt: Date,
+    moderationReason: {
+      type: String,
+      maxlength: 500,
+    },
+    moderationHistory: {
+      type: [
+        {
+          status: {
+            type: String,
+            enum: ["pending", "approved", "rejected", "removed"],
+            required: true,
+          },
+          moderatedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+          },
+          moderatedAt: { type: Date, required: true },
+          reason: { type: String, maxlength: 500 },
+        },
+      ],
+      default: [],
+    },
   },
   {
     timestamps: true,
   }
 );
+pyqSchema.index({ moderationStatus: 1, createdAt: -1 });
 
 const PYQ = mongoose.model<IPYQ>("PYQ", pyqSchema);
 

@@ -17,10 +17,23 @@ interface IReview {
   createdAt: Date;
 }
 
+export type ModerationStatus = "pending" | "approved" | "rejected" | "removed";
+export type ResourceDeliveryMode = "authenticated" | "legacy-public";
+export type ResourceDeliveryType = "image" | "raw";
+
+export interface IModerationHistoryEntry {
+  status: ModerationStatus;
+  moderatedBy: mongoose.Types.ObjectId;
+  moderatedAt: Date;
+  reason?: string;
+}
+
 export interface INote extends Document {
   uploadedBy: mongoose.Types.ObjectId;
   fileUrl: string;
   filePublicId: string;
+  deliveryMode?: ResourceDeliveryMode;
+  deliveryResourceType?: ResourceDeliveryType;
   fileType: "pdf" | "docx" | "ppt";
   originalName: string;
   title: string;
@@ -35,6 +48,11 @@ export interface INote extends Document {
   reviews: IReview[];
   downloadCount: number;
   aiProcessed: boolean;
+  moderationStatus?: ModerationStatus;
+  moderatedBy?: mongoose.Types.ObjectId;
+  moderatedAt?: Date;
+  moderationReason?: string;
+  moderationHistory: IModerationHistoryEntry[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -53,6 +71,14 @@ const noteSchema = new Schema<INote>(
     filePublicId: {
       type: String,
       required: true,
+    },
+    deliveryMode: {
+      type: String,
+      enum: ["authenticated", "legacy-public"],
+    },
+    deliveryResourceType: {
+      type: String,
+      enum: ["image", "raw"],
     },
     fileType: {
       type: String,
@@ -132,6 +158,40 @@ const noteSchema = new Schema<INote>(
       type: Boolean,
       default: false,
     },
+    moderationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected", "removed"],
+      default: "pending",
+      index: true,
+    },
+    moderatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    moderatedAt: Date,
+    moderationReason: {
+      type: String,
+      maxlength: 500,
+    },
+    moderationHistory: {
+      type: [
+        {
+          status: {
+            type: String,
+            enum: ["pending", "approved", "rejected", "removed"],
+            required: true,
+          },
+          moderatedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+          },
+          moderatedAt: { type: Date, required: true },
+          reason: { type: String, maxlength: 500 },
+        },
+      ],
+      default: [],
+    },
   },
   {
     timestamps: true,
@@ -145,6 +205,7 @@ noteSchema.index({
   subject: "text",
   topic: "text",
 });
+noteSchema.index({ moderationStatus: 1, createdAt: -1 });
 
 const Note = mongoose.model<INote>("Note", noteSchema);
 

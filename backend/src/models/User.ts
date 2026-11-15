@@ -1,10 +1,13 @@
 import mongoose, { Document, Schema } from "mongoose";
 
+export type UserRole = "student" | "admin";
+
 export interface IUser extends Document {
   name: string;
   email: string;
   passwordHash: string;
-  role: "student" | "admin";
+  role: UserRole;
+  isActive: boolean;
   uploadedNotes: mongoose.Types.ObjectId[];
   savedNotes: mongoose.Types.ObjectId[];
   createdAt: Date;
@@ -34,13 +37,18 @@ const userSchema = new Schema<IUser>(
       enum: ["student", "admin"],
       default: "student",
     },
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
     uploadedNotes: {
       type: [mongoose.Schema.Types.ObjectId],
       ref: "Note",
       default: [],
     },
     savedNotes: {
-      type: [mongoose.Schema.Types.ObjectId],
+      type: [Schema.Types.ObjectId],
       ref: "Note",
       default: [],
     },

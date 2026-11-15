@@ -1,6 +1,7 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pdfParse = require("pdf-parse");
 import mammoth from "mammoth";
+import { createWorker } from "tesseract.js";
 
 export const extractTextFromUrl = async (
   fileUrl: string,
@@ -36,4 +37,47 @@ export const extractTextFromUrl = async (
     console.error(`Error extracting text from ${fileType} file:`, error);
     return "";
   }
+};
+
+export type TimetableFileExtraction =
+  | { status: "text_extracted"; text: string }
+  | { status: "empty_text"; text: string }
+  | { status: "ocr_completed"; text: string }
+  | { status: "ocr_required"; text: ""; message: string };
+
+/**
+ * PDF text extraction is performed locally after downloading the Cloudinary
+ * asset. Image timetables use Tesseract OCR before the AI parser is called.
+ */
+export const extractTimetableFile = async (
+  file: Express.Multer.File
+): Promise<TimetableFileExtraction> => {
+  const isPdf = file.mimetype === "application/pdf";
+  const url = file.path || file.filename;
+  if (!url) {
+    return { status: "empty_text", text: "" };
+  }
+
+  if (!isPdf) {
+    const response = await fetch(url);
+    if (!response.ok) {
+      return { status: "ocr_required", text: "", message: "The uploaded image could not be downloaded for OCR." };
+    }
+
+    const worker = await createWorker("eng");
+    try {
+      const result = await worker.recognize(Buffer.from(await response.arrayBuffer()));
+      const text = result.data.text.trim().substring(0, 12000);
+      return text
+        ? { status: "ocr_completed", text }
+        : { status: "empty_text", text: "" };
+    } finally {
+      await worker.terminate();
+    }
+  }
+
+  const text = await extractTextFromUrl(url, "pdf");
+  return text
+    ? { status: "text_extracted", text }
+    : { status: "empty_text", text: "" };
 };

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import Groq from "groq-sdk";
 import Note from "../models/Note";
+import { publicNoteFilter } from "../utils/resourceVisibility";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -22,7 +23,9 @@ export const chat = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const note = await Note.findById(noteId).select("title summary keywords");
+    const note = await Note.findOne(publicNoteFilter({ _id: noteId })).select(
+      "title summary keywords"
+    );
 
     if (!note) {
       res.status(404).json({ message: "Note not found" });
@@ -50,7 +53,7 @@ If the question is unrelated to the note, politely redirect the student back to 
       : [];
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
       max_tokens: 500,
       temperature: 0.5,
       messages: [

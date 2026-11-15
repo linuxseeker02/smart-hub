@@ -4,13 +4,14 @@ import cloudinary from "./cloudinary";
 
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
-  params: {
+  params: (_req, file) => ({
     folder: "smart-hub/notes",
-    resource_type: "raw",
+    resource_type: file.mimetype.includes("pdf") ? "image" : "raw",
+    type: "authenticated",
     allowed_formats: ["pdf", "docx", "ppt", "pptx"],
     use_filename: true,
     unique_filename: true,
-  } as any,
+  }),
 });
 
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {

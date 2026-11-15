@@ -6,7 +6,8 @@ export interface IStudentProfile extends Document {
   rollNumber: string;
   department: string;
   program: string;
-  semester: number;
+  semester?: number;
+  academicSession: string;
   section: string;
   batch: string;
   university: string;
@@ -30,7 +31,8 @@ const studentProfileSchema = new Schema<IStudentProfile>(
     rollNumber: { type: String, default: "" },
     department: { type: String, default: "" },
     program: { type: String, default: "" },
-    semester: { type: Number, default: 1, min: 1, max: 8 },
+    semester: { type: Number, min: 1, max: 8 },
+    academicSession: { type: String, default: "", trim: true },
     section: { type: String, default: "" },
     batch: { type: String, default: "" },
     university: { type: String, default: "" },

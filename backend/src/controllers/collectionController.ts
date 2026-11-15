@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import Collection from "../models/Collection";
 import Note from "../models/Note";
+import { publicNoteFilter } from "../utils/resourceVisibility";
 
 export const createCollection = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -34,7 +35,11 @@ export const createCollection = async (req: Request, res: Response): Promise<voi
 export const getMyCollections = async (req: Request, res: Response): Promise<void> => {
   try {
     const collections = await Collection.find({ owner: req.user.id })
-      .populate("notes", "title subject fileType averageRating")
+      .populate({
+        path: "notes",
+        match: publicNoteFilter(),
+        select: "title subject fileType averageRating",
+      })
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -53,7 +58,7 @@ export const addNoteToCollection = async (req: Request, res: Response): Promise<
 
     const [collection, note] = await Promise.all([
       Collection.findById(collectionId),
-      Note.findById(noteId).select("_id"),
+      Note.findOne(publicNoteFilter({ _id: noteId })).select("_id"),
     ]);
 
     if (!collection) {

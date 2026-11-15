@@ -7,6 +7,7 @@ type ProfilePayload = {
   department?: string;
   program?: string;
   semester?: number;
+  academicSession?: string;
   section?: string;
   batch?: string;
   university?: string;
@@ -27,7 +28,8 @@ export const getProfile = async (req: Request, res: Response): Promise<void> => 
         rollNumber: "",
         department: "",
         program: "",
-        semester: 1,
+        semester: null,
+        academicSession: "",
         section: "",
         batch: "",
         university: "",
@@ -55,7 +57,8 @@ export const upsertProfile = async (req: Request, res: Response): Promise<void> 
       rollNumber: String(body.rollNumber ?? "").trim(),
       department: String(body.department ?? "").trim(),
       program: String(body.program ?? "").trim(),
-      semester: Number(body.semester ?? 1),
+      semester: body.semester ? Number(body.semester) : undefined,
+      academicSession: String(body.academicSession ?? "").trim(),
       section: String(body.section ?? "").trim(),
       batch: String(body.batch ?? "").trim(),
       university: String(body.university ?? "").trim(),

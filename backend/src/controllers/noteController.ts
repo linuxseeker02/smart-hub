@@ -6,17 +6,103 @@ import { extractTextFromUrl } from "../services/extractText";
 import { processWithAI } from "../services/aiService";
 import mongoose from "mongoose";
 import Groq from "groq-sdk";
-import https from "https";
-import http from "http";
-import { URL } from "url";
+import { publicNoteFilter } from "../utils/resourceVisibility";
+import {
+  createAuthenticatedThumbnailUrl,
+  createSignedResourceFileUrl,
+  removeProviderFileFields,
+  ResourceDeliveryError,
+  RESOURCE_FILE_URL_EXPIRY_SECONDS,
+  removePrivateNoteFields,
+} from "../utils/resourceFileAccess";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
+interface Flashcard {
+  front: string;
+  back: string;
+}
+
+interface FlashcardResponse {
+  flashcards: Flashcard[];
+}
+
+const MAX_AI_RESPONSE_PREVIEW_LENGTH = 400;
+
+const toSingleLinePreview = (value: string): string =>
+  value.replace(/\s+/g, " ").trim().slice(0, MAX_AI_RESPONSE_PREVIEW_LENGTH);
+
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+const cleanupUploadedNote = async (file: Express.Multer.File | undefined): Promise<void> => {
+  if (!file?.filename) return;
+
+  try {
+    await cloudinary.uploader.destroy(file.filename, { resource_type: "raw" });
+  } catch (error) {
+    console.error("Note upload cleanup failed:", {
+      error: error instanceof Error ? error.message : "Unknown cleanup error",
+    });
+  }
+};
+
+const parseAndValidateFlashcards = (rawContent: string): FlashcardResponse => {
+  const parsed = JSON.parse(rawContent) as unknown;
+
+  if (typeof parsed !== "object" || parsed === null) {
+    throw new Error("Flashcard response must be a JSON object");
+  }
+
+  const flashcards = (parsed as { flashcards?: unknown }).flashcards;
+
+  if (!Array.isArray(flashcards)) {
+    throw new Error("flashcards must be an array");
+  }
+
+  if (flashcards.length !== 8) {
+    throw new Error("flashcards array must contain exactly 8 items");
+  }
+
+  const normalizedFlashcards = flashcards.map((card, index) => {
+    if (typeof card !== "object" || card === null) {
+      throw new Error(`flashcards[${index}] must be an object`);
+    }
+
+    const front = (card as { front?: unknown }).front;
+    const back = (card as { back?: unknown }).back;
+
+    if (!isNonEmptyString(front)) {
+      throw new Error(`flashcards[${index}].front must be a non-empty string`);
+    }
+
+    if (!isNonEmptyString(back)) {
+      throw new Error(`flashcards[${index}].back must be a non-empty string`);
+    }
+
+    return {
+      front: front.trim(),
+      back: back.trim(),
+    };
+  });
+
+  return { flashcards: normalizedFlashcards };
+};
+
 export const uploadNote = async (req: Request, res: Response): Promise<void> => {
+  let createdNoteId: mongoose.Types.ObjectId | null = null;
   try {
     const { semester, subject, topic } = req.body;
 
-    if (!semester || !subject || !topic) {
+    const semesterNumber = Number(semester);
+    if (
+      !Number.isInteger(semesterNumber) ||
+      semesterNumber < 1 ||
+      semesterNumber > 8 ||
+      !isNonEmptyString(subject) ||
+      !isNonEmptyString(topic)
+    ) {
+      await cleanupUploadedNote(req.file);
       res.status(400).json({ message: "Semester, subject, and topic are required" });
       return;
     }
@@ -26,17 +112,12 @@ export const uploadNote = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    let fileType: "pdf" | "docx" | "ppt";
-    if (req.file.mimetype.includes("pdf")) {
-      fileType = "pdf";
-    } else if (req.file.mimetype.includes("msword") || req.file.mimetype.includes("officedocument")) {
-      fileType = "docx";
-    } else if (req.file.mimetype.includes("presentation")) {
-      fileType = "ppt";
-    } else {
-      res.status(400).json({ message: "Invalid file type" });
-      return;
-    }
+    // MIME validation is handled by multer fileFilter upstream.
+    const fileType: "pdf" | "docx" | "ppt" = req.file.mimetype.includes("pdf")
+      ? "pdf"
+      : req.file.mimetype.includes("presentation")
+        ? "ppt"
+        : "docx";
 
     const titleWithoutExt = req.file.originalname.replace(/\.[^/.]+$/, "");
 
@@ -44,26 +125,48 @@ export const uploadNote = async (req: Request, res: Response): Promise<void> => 
       uploadedBy: req.user.id,
       fileUrl: req.file.path,
       filePublicId: req.file.filename,
+      deliveryMode: "authenticated",
+      deliveryResourceType: fileType === "pdf" ? "image" : "raw",
       originalName: req.file.originalname,
       fileType: fileType,
-      semester: Number(semester),
+      semester: semesterNumber,
       subject: subject.trim(),
       topic: topic.trim(),
       title: titleWithoutExt,
       aiProcessed: false,
+      moderationStatus: "pending",
     });
+    createdNoteId = note._id;
 
     await User.findByIdAndUpdate(req.user.id, {
       $push: { uploadedNotes: note._id },
     });
 
-    res.status(201).json(note);
+    res.status(201).json(
+      removeProviderFileFields(note)
+    );
 
     // Process AI in background (fire and forget - don't block response)
-    extractTextFromUrl(note.fileUrl, note.fileType)
+    extractTextFromUrl(
+      createSignedResourceFileUrl(
+        note.filePublicId,
+        note.fileType,
+        note.deliveryMode,
+        note.deliveryResourceType
+      ),
+      note.fileType
+    )
       .then((extractedText) => processWithAI(extractedText, note.originalName))
-      .then((aiResult) =>
-        Note.findByIdAndUpdate(
+      .then((aiResult) => {
+        if (!aiResult) {
+          console.error(`AI processing failed for note ${note._id}`, {
+            stage: "validation",
+            error: "AI result was null",
+          });
+          return null;
+        }
+
+        return Note.findByIdAndUpdate(
           note._id,
           {
             title: aiResult.title,
@@ -73,15 +176,51 @@ export const uploadNote = async (req: Request, res: Response): Promise<void> => 
             aiProcessed: true,
           },
           { new: true }
-        )
-      )
-      .then(() => {
-        console.log(`AI processing completed for note: ${note._id}`);
+        ).then((updatedNote) => {
+          if (!updatedNote) {
+            throw new Error("Note not found during AI database update");
+          }
+          return updatedNote;
+        });
       })
-      .catch((err) => {
-        console.error(`AI processing failed for note ${note._id}:`, err);
+      .then((updatedNote) => {
+        if (updatedNote) {
+          console.log(`AI processing completed for note: ${note._id}`);
+        }
+      })
+      .catch((err: unknown) => {
+        console.error(`AI processing failed for note ${note._id}`, {
+          stage: "background_pipeline",
+          error: err instanceof Error ? err.message : "Unknown background AI error",
+        });
       });
   } catch (error) {
+    if (createdNoteId) {
+      try {
+        await Note.findByIdAndDelete(createdNoteId);
+      } catch (rollbackError) {
+        console.error("Note upload database rollback failed:", {
+          error:
+            rollbackError instanceof Error
+              ? rollbackError.message
+              : "Unknown rollback error",
+        });
+      }
+
+      try {
+        await User.findByIdAndUpdate(req.user.id, {
+          $pull: { uploadedNotes: createdNoteId },
+        });
+      } catch (reconciliationError) {
+        console.error("Note upload user-reference reconciliation failed:", {
+          error:
+            reconciliationError instanceof Error
+              ? reconciliationError.message
+              : "Unknown reconciliation error",
+        });
+      }
+    }
+    await cleanupUploadedNote(req.file);
     console.error("Upload note error:", error);
     res.status(500).json({ message: "Server error during note upload" });
   }
@@ -108,9 +247,10 @@ export const getNotes = async (req: Request, res: Response): Promise<void> => {
     const pageNum = parseInt(page as string);
     const limitNum = Math.min(parseInt(limit as string), 50);
 
-    const total = await Note.countDocuments(filter);
-    const notes = await Note.find(filter)
-      .populate("uploadedBy", "name email")
+    const publicFilter = publicNoteFilter(filter);
+    const total = await Note.countDocuments(publicFilter);
+    const notes = await Note.find(publicFilter)
+      .populate("uploadedBy", "name")
       .sort({ createdAt: -1 })
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum);
@@ -118,7 +258,9 @@ export const getNotes = async (req: Request, res: Response): Promise<void> => {
     const totalPages = Math.ceil(total / limitNum);
 
     res.status(200).json({
-      notes,
+      notes: notes.map((note) =>
+        removePrivateNoteFields(note)
+      ),
       total,
       page: pageNum,
       totalPages,
@@ -131,14 +273,16 @@ export const getNotes = async (req: Request, res: Response): Promise<void> => {
 
 export const getNoteById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const note = await Note.findById(req.params.id).populate("uploadedBy", "name email");
+    const note = await Note.findOne(
+      publicNoteFilter({ _id: req.params.id })
+    ).populate("uploadedBy", "name");
 
     if (!note) {
       res.status(404).json({ message: "Note not found" });
       return;
     }
 
-    res.status(200).json(note);
+    res.status(200).json(removePrivateNoteFields(note));
   } catch (error) {
     console.error("Get note by id error:", error);
     res.status(500).json({ message: "Server error fetching note" });
@@ -149,7 +293,7 @@ export const toggleBookmark = async (req: Request, res: Response): Promise<void>
   try {
     const [user, note] = await Promise.all([
       User.findById(req.user.id),
-      Note.findById(req.params.id).select("_id"),
+      Note.findOne(publicNoteFilter({ _id: req.params.id })).select("_id"),
     ]);
 
     if (!user) {
@@ -191,6 +335,7 @@ export const getBookmarks = async (req: Request, res: Response): Promise<void> =
   try {
     const user = await User.findById(req.user.id).populate({
       path: "savedNotes",
+      match: publicNoteFilter(),
       populate: { path: "uploadedBy", select: "name email" },
     });
 
@@ -200,7 +345,9 @@ export const getBookmarks = async (req: Request, res: Response): Promise<void> =
     }
 
     res.status(200).json({
-      notes: user.savedNotes,
+      notes: user.savedNotes.map((note) =>
+        removeProviderFileFields(note)
+      ),
       total: user.savedNotes.length,
     });
   } catch (error) {
@@ -249,9 +396,9 @@ export const searchNotes = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const filter: any = {
+    const filter: any = publicNoteFilter({
       $text: { $search: q },
-    };
+    });
 
     if (semester) {
       filter.semester = Number(semester);
@@ -262,7 +409,7 @@ export const searchNotes = async (req: Request, res: Response): Promise<void> =>
 
     const total = await Note.countDocuments(filter);
     const notes = await Note.find(filter, { score: { $meta: "textScore" } })
-      .populate("uploadedBy", "name email")
+      .populate("uploadedBy", "name")
       .sort({ score: { $meta: "textScore" } })
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum);
@@ -270,7 +417,9 @@ export const searchNotes = async (req: Request, res: Response): Promise<void> =>
     const totalPages = Math.ceil(total / limitNum);
 
     res.status(200).json({
-      notes,
+      notes: notes.map((note) =>
+        removePrivateNoteFields(note)
+      ),
       total,
       page: pageNum,
       totalPages,
@@ -284,8 +433,8 @@ export const searchNotes = async (req: Request, res: Response): Promise<void> =>
 
 export const incrementDownload = async (req: Request, res: Response): Promise<void> => {
   try {
-    const note = await Note.findByIdAndUpdate(
-      req.params.id,
+    const note = await Note.findOneAndUpdate(
+      publicNoteFilter({ _id: req.params.id }),
       { $inc: { downloadCount: 1 } },
       { new: true }
     );
@@ -304,14 +453,14 @@ export const incrementDownload = async (req: Request, res: Response): Promise<vo
 
 export const rateNote = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { stars } = req.body;
+    const stars = Number(req.body.stars);
 
-    if (typeof stars !== "number" || stars < 1 || stars > 5) {
+    if (!Number.isFinite(stars) || stars < 1 || stars > 5) {
       res.status(400).json({ message: "Stars must be a number between 1 and 5" });
       return;
     }
 
-    const note = await Note.findById(req.params.id);
+    const note = await Note.findOne(publicNoteFilter({ _id: req.params.id }));
 
     if (!note) {
       res.status(404).json({ message: "Note not found" });
@@ -360,7 +509,7 @@ export const addReview = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const note = await Note.findById(req.params.id);
+    const note = await Note.findOne(publicNoteFilter({ _id: req.params.id }));
 
     if (!note) {
       res.status(404).json({ message: "Note not found" });
@@ -394,7 +543,9 @@ export const addReview = async (req: Request, res: Response): Promise<void> => {
 
 export const getReviews = async (req: Request, res: Response): Promise<void> => {
   try {
-    const note = await Note.findById(req.params.id).populate("reviews.userId", "name");
+    const note = await Note.findOne(
+      publicNoteFilter({ _id: req.params.id })
+    ).populate("reviews.userId", "name");
 
     if (!note) {
       res.status(404).json({ message: "Note not found" });
@@ -418,7 +569,9 @@ export const getReviews = async (req: Request, res: Response): Promise<void> => 
 export const generateFlashcards = async (req: Request, res: Response): Promise<void> => {
   try {
     const noteId = req.params.id;
-    const note = await Note.findById(noteId).select("title summary keywords");
+    const note = await Note.findOne(
+      publicNoteFilter({ _id: noteId })
+    ).select("title summary keywords");
 
     if (!note) {
       res.status(404).json({ message: "Note not found" });
@@ -431,21 +584,36 @@ export const generateFlashcards = async (req: Request, res: Response): Promise<v
     }
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
       max_tokens: 1000,
       temperature: 0.3,
+      response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
-          content: "You are a flashcard generator. Respond ONLY with valid JSON. No markdown.",
+          content:
+            "You are an academic flashcard generator. Use only the supplied title, summary, and keywords. Do not invent facts. Return only one valid JSON object. No markdown and no extra text.",
         },
         {
           role: "user",
-          content: `Generate 8 flashcards from this academic content.
-Return a JSON array of objects with exactly these fields:
-[{ front: string, back: string }]
-Front: a question or concept
-Back: the answer or explanation (max 2 sentences)
+          content: `Generate exactly 8 flashcards from this academic content.
+Return exactly one JSON object with this structure:
+{
+  "flashcards": [
+    {
+      "front": "Question or concept",
+      "back": "Answer or explanation"
+    }
+  ]
+}
+
+Rules:
+- flashcards must have exactly 8 items.
+- every item must have non-empty strings for front and back.
+- front should be a meaningful question or concept prompt.
+- back should be concise, approximately two sentences maximum.
+- avoid duplicates.
+- use only the provided content, with no fabricated facts.
 
 Content:
 Title: ${note.title}
@@ -455,54 +623,65 @@ Keywords: ${note.keywords.join(", ")}`,
       ],
     });
 
-    const rawContent = completion.choices[0]?.message?.content ?? "[]";
-    const cleanedContent = rawContent.replace(/```json|```/g, "").trim();
+    const rawContent = completion.choices[0]?.message?.content ?? "";
+    const cleanedContent = rawContent.trim();
 
-    let parsedFlashcards: unknown;
+    let flashcardResponse: FlashcardResponse;
     try {
-      parsedFlashcards = JSON.parse(cleanedContent);
+      flashcardResponse = parseAndValidateFlashcards(cleanedContent);
     } catch (parseError) {
-      console.error("Flashcards parse error:", parseError);
+      console.error("Flashcard generation failed", {
+        stage: "parsing_or_validation",
+        error: parseError instanceof Error ? parseError.message : "Unknown flashcard parse error",
+        responsePreview: toSingleLinePreview(cleanedContent),
+      });
       res.status(500).json({ message: "Failed to generate flashcards" });
       return;
     }
 
-    if (!Array.isArray(parsedFlashcards)) {
-      res.status(500).json({ message: "Failed to generate flashcards" });
-      return;
-    }
-
-    const flashcards = parsedFlashcards
-      .filter(
-        (card): card is { front: string; back: string } =>
-          typeof card === "object" &&
-          card !== null &&
-          "front" in card &&
-          "back" in card &&
-          typeof (card as { front: unknown }).front === "string" &&
-          typeof (card as { back: unknown }).back === "string"
-      )
-      .map((card) => ({
-        front: card.front.trim(),
-        back: card.back.trim(),
-      }));
-
-    res.status(200).json({ flashcards });
+    res.status(200).json(flashcardResponse);
   } catch (error) {
     console.error("Generate flashcards error:", error);
     res.status(500).json({ message: "Failed to generate flashcards" });
   }
 };
 
-export const downloadNote = async (req: Request, res: Response): Promise<void> => {
+export const getNoteContent = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
-    const note = await Note.findById(id);
+    const note = await Note.findOne(publicNoteFilter({ _id: req.params.id })).select(
+      "title summary keywords quizQuestions fileType originalName aiProcessed"
+    );
 
     if (!note) {
       res.status(404).json({ message: "Note not found" });
       return;
     }
+
+    res.status(200).json(note);
+  } catch (error) {
+    console.error("Get note content error:", error);
+    res.status(500).json({ message: "Server error fetching note content" });
+  }
+};
+
+export const downloadNote = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const note = await Note.findOne(publicNoteFilter({ _id: id }));
+
+    if (!note) {
+      res.status(404).json({ message: "Note not found" });
+      return;
+    }
+
+    const signedUrl = createSignedResourceFileUrl(
+      note.filePublicId,
+      note.fileType,
+      note.deliveryMode,
+      note.deliveryResourceType,
+      undefined,
+      true
+    );
 
     // Determine Content-Type based on fileType
     const contentTypeMap: Record<string, string> = {
@@ -520,41 +699,61 @@ export const downloadNote = async (req: Request, res: Response): Promise<void> =
       `attachment; filename="${encodeURIComponent(note.originalName)}"`
     );
 
-    // Parse URL and choose appropriate module
-    const parsedUrl = new URL(note.fileUrl);
-    const protocol = parsedUrl.protocol === "https:" ? https : http;
-
-    // Fetch file from URL and pipe to response
-    protocol.get(note.fileUrl, (fileRes) => {
-      fileRes.pipe(res);
-
-      fileRes.on("error", (err) => {
-        console.error("Error streaming file:", err);
-        if (!res.headersSent) {
-          res.status(500).json({ message: "Error downloading file" });
-        }
-      });
-    }).on("error", (err) => {
-      console.error("Error fetching file:", err);
-      if (!res.headersSent) {
-        res.status(500).json({ message: "Error downloading file" });
-      }
-    });
+    res.redirect(signedUrl);
 
     // Increment download count atomically
-    await Note.findByIdAndUpdate(id, { $inc: { downloadCount: 1 } });
+    await Note.findOneAndUpdate(
+      publicNoteFilter({ _id: id }),
+      { $inc: { downloadCount: 1 } }
+    );
   } catch (error) {
     console.error("Download note error:", error);
+    if (error instanceof ResourceDeliveryError) {
+      res.status(409).json({ message: error.message, code: error.code });
+      return;
+    }
     if (!res.headersSent) {
       res.status(500).json({ message: "Server error downloading note" });
     }
   }
 };
 
+export const getNoteFileUrl = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const note = await Note.findOne(
+      publicNoteFilter({ _id: req.params.id })
+    ).select("filePublicId fileType deliveryMode deliveryResourceType");
+
+    if (!note) {
+      res.status(404).json({ message: "Note not found" });
+      return;
+    }
+
+    res.status(200).json({
+      url: createSignedResourceFileUrl(
+        note.filePublicId,
+        note.fileType,
+        note.deliveryMode,
+        note.deliveryResourceType
+      ),
+      expiresIn: RESOURCE_FILE_URL_EXPIRY_SECONDS,
+    });
+  } catch (error) {
+    console.error("Get note file URL error:", error);
+    if (error instanceof ResourceDeliveryError) {
+      res.status(409).json({ message: error.message, code: error.code });
+      return;
+    }
+    res.status(500).json({ message: "Server error creating file URL" });
+  }
+};
+
 export const getThumbnail = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const note = await Note.findById(id).select("fileUrl fileType filePublicId");
+    const note = await Note.findOne(
+      publicNoteFilter({ _id: id })
+    ).select("fileType filePublicId deliveryMode deliveryResourceType");
 
     if (!note) {
       res.status(404).json({ message: "Note not found" });
@@ -566,12 +765,25 @@ export const getThumbnail = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    // Construct Cloudinary thumbnail URL
-    const cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME;
-    const thumbnailUrl = `https://res.cloudinary.com/${cloudinaryCloudName}/image/upload/w_400,h_300,c_fill,pg_1,f_jpg/${note.filePublicId}.jpg`;
+    const thumbnailUrl = createAuthenticatedThumbnailUrl(
+      note.filePublicId,
+      note.deliveryMode,
+      note.deliveryResourceType
+    );
+    const thumbnailResponse = await fetch(thumbnailUrl);
+    if (!thumbnailResponse.ok) {
+      res.status(404).json({ message: "Thumbnail unavailable" });
+      return;
+    }
 
-    res.redirect(thumbnailUrl);
+    res.setHeader("Content-Type", "image/jpeg");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.status(200).send(Buffer.from(await thumbnailResponse.arrayBuffer()));
   } catch (error) {
+    if (error instanceof Error && error.name === "ResourceDeliveryError") {
+      res.status(404).json({ message: "Thumbnail unavailable" });
+      return;
+    }
     console.error("Get thumbnail error:", error);
     res.status(500).json({ message: "Server error fetching thumbnail" });
   }

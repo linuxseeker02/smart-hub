@@ -1,9 +1,14 @@
 import { Request, Response } from "express";
-import http from "http";
-import https from "https";
-import { URL } from "url";
 import PYQ, { PYQExamType } from "../models/PYQ";
 import cloudinary from "../config/cloudinary";
+import { publicPyqFilter } from "../utils/resourceVisibility";
+import {
+  createSignedResourceFileUrl,
+  removeProviderFileFields,
+  ResourceDeliveryError,
+  RESOURCE_FILE_URL_EXPIRY_SECONDS,
+  removePrivatePyqFields,
+} from "../utils/resourceFileAccess";
 
 const VALID_YEARS = [2023, 2024, 2025, 2026, 2027, 2028] as const;
 const VALID_EXAM_TYPES: PYQExamType[] = [
@@ -57,12 +62,17 @@ export const uploadPYQ = async (req: Request, res: Response): Promise<void> => {
       examType: examType as PYQExamType,
       fileUrl: req.file.path,
       filePublicId: req.file.filename,
+      deliveryMode: "authenticated",
+      deliveryResourceType: "image",
       originalName: req.file.originalname,
       fileSize: req.file.size || 0,
       description: String(description || "").trim(),
+      moderationStatus: "pending",
     });
 
-    res.status(201).json(pyq);
+    res.status(201).json(
+      removeProviderFileFields(pyq)
+    );
   } catch (error) {
     console.error("Upload PYQ error:", error);
     res.status(500).json({ message: "Server error uploading PYQ" });
@@ -90,12 +100,14 @@ export const getPYQs = async (req: Request, res: Response): Promise<void> => {
     if (year) filter.year = Number(year);
     if (examType) filter.examType = examType;
 
-    const pyqs = await PYQ.find(filter)
+    const pyqs = await PYQ.find(publicPyqFilter(filter))
       .populate("uploadedBy", "name")
       .sort({ year: -1, examType: 1 });
 
     res.status(200).json({
-      pyqs,
+      pyqs: pyqs.map((pyq) =>
+        removePrivatePyqFields(pyq)
+      ),
       total: pyqs.length,
     });
   } catch (error) {
@@ -106,8 +118,8 @@ export const getPYQs = async (req: Request, res: Response): Promise<void> => {
 
 export const downloadPYQ = async (req: Request, res: Response): Promise<void> => {
   try {
-    const pyq = await PYQ.findByIdAndUpdate(
-      req.params.id,
+    const pyq = await PYQ.findOneAndUpdate(
+      publicPyqFilter({ _id: req.params.id }),
       { $inc: { downloadCount: 1 } },
       { new: true }
     );
@@ -117,47 +129,63 @@ export const downloadPYQ = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
+    const signedUrl = createSignedResourceFileUrl(
+      pyq.filePublicId,
+      "pdf",
+      pyq.deliveryMode,
+      pyq.deliveryResourceType,
+      undefined,
+      true
+    );
+
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
       `attachment; filename="${encodeURIComponent(pyq.originalName)}"`
     );
 
-    const parsedUrl = new URL(pyq.fileUrl);
-    const protocolClient = parsedUrl.protocol === "https:" ? https : http;
-
-    protocolClient
-      .get(pyq.fileUrl, (fileRes) => {
-        if (fileRes.statusCode && fileRes.statusCode >= 400) {
-          if (!res.headersSent) {
-            res.status(500).json({ message: "Failed to fetch file stream" });
-          }
-          return;
-        }
-
-        fileRes.pipe(res);
-
-        fileRes.on("error", (streamErr) => {
-          console.error("PYQ stream error:", streamErr);
-          if (!res.headersSent) {
-            res.status(500).json({ message: "Server error downloading PYQ" });
-          }
-        });
-      })
-      .on("error", (fetchErr) => {
-        console.error("PYQ fetch error:", fetchErr);
-        if (!res.headersSent) {
-          res.status(500).json({ message: "Server error downloading PYQ" });
-        }
-      });
+    res.redirect(signedUrl);
   } catch (error) {
     console.error("Download PYQ error:", error);
+    if (error instanceof ResourceDeliveryError) {
+      res.status(409).json({ message: error.message, code: error.code });
+      return;
+    }
     if (!res.headersSent) {
       res.status(500).json({ message: "Server error downloading PYQ" });
     }
   }
 };
 
+export const getPYQFileUrl = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const pyq = await PYQ.findOne(
+      publicPyqFilter({ _id: req.params.id })
+    ).select("filePublicId deliveryMode deliveryResourceType");
+
+    if (!pyq) {
+      res.status(404).json({ message: "PYQ not found" });
+      return;
+    }
+
+    res.status(200).json({
+      url: createSignedResourceFileUrl(
+        pyq.filePublicId,
+        "pdf",
+        pyq.deliveryMode,
+        pyq.deliveryResourceType
+      ),
+      expiresIn: RESOURCE_FILE_URL_EXPIRY_SECONDS,
+    });
+  } catch (error) {
+    console.error("Get PYQ file URL error:", error);
+    if (error instanceof ResourceDeliveryError) {
+      res.status(409).json({ message: error.message, code: error.code });
+      return;
+    }
+    res.status(500).json({ message: "Server error creating file URL" });
+  }
+};
 export const deletePYQ = async (req: Request, res: Response): Promise<void> => {
   try {
     const pyq = await PYQ.findById(req.params.id);

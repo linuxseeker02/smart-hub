@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import Groq from "groq-sdk";
 import Timetable from "../models/Timetable";
+import { extractTimetableFile } from "../services/extractText";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -53,14 +54,15 @@ const normalizeSlot = (slot: TimetableSlotInput) => {
 
 export const uploadTimetable = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { semester, section, slots } = req.body as {
+    const { semester, academicSession, section, slots } = req.body as {
       semester?: number;
+      academicSession?: string;
       section?: string;
       slots?: TimetableSlotInput[];
     };
 
-    if (!semester || !Array.isArray(slots)) {
-      res.status(400).json({ message: "semester and slots are required" });
+    if (!Array.isArray(slots)) {
+      res.status(400).json({ message: "slots are required" });
       return;
     }
 
@@ -72,7 +74,8 @@ export const uploadTimetable = async (req: Request, res: Response): Promise<void
 
     const timetable = await Timetable.create({
       user: req.user.id,
-      semester: Number(semester),
+      ...(semester ? { semester: Number(semester) } : {}),
+      academicSession: String(academicSession || "").trim(),
       section: String(section || "").trim(),
       slots: normalizedSlots,
       isActive: true,
@@ -138,8 +141,17 @@ export const parseTimetableWithAI = async (req: Request, res: Response): Promise
       return;
     }
 
+    const slots = await parseTimetableText(rawText);
+    res.status(200).json({ slots });
+  } catch (error) {
+    console.error("Parse timetable AI error:", error);
+    res.status(500).json({ message: "Failed to parse timetable" });
+  }
+};
+
+const parseTimetableText = async (rawText: string) => {
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
       max_tokens: 2000,
       messages: [
         {
@@ -172,17 +184,70 @@ ${rawText}`,
     const parsed = JSON.parse(cleaned) as unknown;
 
     if (!Array.isArray(parsed)) {
-      res.status(500).json({ message: "Failed to parse timetable" });
+      throw new Error("AI response was not a slot array");
+    }
+
+    return parsed
+      .map((item) => normalizeSlot(item as TimetableSlotInput))
+      .filter((slot): slot is NonNullable<ReturnType<typeof normalizeSlot>> => slot !== null);
+};
+
+export const uploadTimetableFile = async (req: Request, res: Response): Promise<void> => {
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ status: "invalid", message: "A timetable file is required" });
+    return;
+  }
+
+  const metadata = {
+    originalName: file.originalname,
+    mimeType: file.mimetype,
+    size: file.size,
+    url: file.path,
+  };
+
+  try {
+    const extraction = await extractTimetableFile(file);
+    if (extraction.status === "ocr_required") {
+      res.status(422).json({ status: extraction.status, metadata, message: extraction.message, slots: [] });
       return;
     }
 
-    const slots = parsed
-      .map((item) => normalizeSlot(item as TimetableSlotInput))
-      .filter((slot): slot is NonNullable<ReturnType<typeof normalizeSlot>> => slot !== null);
+    if (!extraction.text || extraction.text.length < 20) {
+      res.status(422).json({
+        status: "insufficient_text",
+        metadata,
+        message: "No usable text could be extracted from this PDF. A text-based PDF is required.",
+        slots: [],
+      });
+      return;
+    }
 
-    res.status(200).json({ slots });
+    const slots = await parseTimetableText(extraction.text);
+    res.status(200).json({
+      status: slots.length ? "parsed" : "no_slots_found",
+      metadata: { ...metadata, extractedCharacters: extraction.text.length },
+      slots,
+      saved: false,
+    });
   } catch (error) {
-    console.error("Parse timetable AI error:", error);
-    res.status(500).json({ message: "Failed to parse timetable" });
+    console.error("Timetable file processing error:", error);
+    res.status(502).json({
+      status: "parse_failed",
+      metadata,
+      message: "The timetable was uploaded, but AI parsing failed. Please use the JSON parse endpoint or try again.",
+      slots: [],
+      saved: false,
+    });
+  }
+};
+
+export const getTimetableHistory = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const timetables = await Timetable.find({ user: req.user.id }).sort({ createdAt: -1 });
+    res.status(200).json({ timetables });
+  } catch (error) {
+    console.error("Get timetable history error:", error);
+    res.status(500).json({ message: "Server error fetching timetable history" });
   }
 };

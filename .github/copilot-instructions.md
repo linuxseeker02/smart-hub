@@ -94,6 +94,18 @@ Place `.env` at `backend/` when running the backend locally (backend uses dotenv
 
 ---
 
+## E2E / Playwright notes
+
+- CI (recommended): The included workflow `.github/workflows/copilot-setup-steps.yml` installs Node, runs `npm ci` in `frontend/` and `backend/`, installs Playwright and browser binaries, and performs a frontend build smoke check. This ensures Copilot cloud agent sessions can run Playwright tests in Actions without extra setup.
+
+- Local run (developer machine):
+  - Install Playwright test runner and browsers in `frontend/`:
+    - cd frontend && npm install --save-dev @playwright/test@^1.62.1 --legacy-peer-deps
+    - cd frontend && npx playwright install
+  - Start the frontend dev server (cd frontend && npm run dev) so the app is available at http://localhost:3000, then run:
+    - cd frontend && npm run test:e2e
+  - Note: some environments require elevated privileges to install browser deps. If install fails here, rely on CI to run E2E.
+
 If this file already exists in the repository root under `.github/copilot-instructions.md`, merge important differences rather than replacing verbatim.
 
 ---
